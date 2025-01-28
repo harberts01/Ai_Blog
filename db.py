@@ -1,17 +1,15 @@
-import pyodbc 
+import pyodbc #provides a way to connect to a SQL Server database
 
-# Connection details
+
 server = 'Juggernaut' 
 database = 'Ai_Blog' 
 
-# Connection string
 connection_string = f'DRIVER={{SQL Server}};SERVER={server};DATABASE={database};'
 
-# Connect to the database
 conn = pyodbc.connect(connection_string)
 
 print('Database connection established.')
 
 
-# # Close the connection
+# # Close the connection -- Not closing the connection here because it needs to be open for the Ai to continue posting to the database
 # conn.close()

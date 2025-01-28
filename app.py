@@ -1,10 +1,10 @@
-import requests
-import db
-import os
-import re
-import schedule
-import time
-import threading
+import requests #provides a way to send HTTP requests to a web server
+import db 
+import os #a way to interact with the operating system
+import re #regular expression matching operations
+import schedule 
+import time 
+import threading #provides a way to run multiple threads (tasks) while the main thread is running
 from flask import Flask, render_template, request
 from openai import OpenAI
 
@@ -22,26 +22,21 @@ def home():
     posts = fetch_posts()
     return render_template("index.html", posts=posts)
 
-
-#TODO: Create a comment route that accepts POST requests
-@app.route("/comment", methods=["POST"])
-def comment():
-    data = request.form
-    insert_comment(data)
-    return "Comment added successfully!"
+#TODO: create a route for the read more button that will display the full blog post
+   
 
 #TODO: Create a function that inserts comments into the database
 def insert_comment(data):
     conn = get_db_connection()
     with conn.cursor() as cursor:
+        postid = data.get("postid")
+        content = data.get("comment")
+        if not postid or not content:
+            raise ValueError("Missing postid or content in the form data")
 
-        #building the comment SQL script
-        columns = ', '.join(data.keys()) #columns need to be commentid, postid, userid, content, timestamp
-        placeholders = ', '.join(['?'] * len(data))
-        sql = f"INSERT INTO Comment ({columns}) VALUES ({placeholders})"
-        cursor.execute(sql, tuple(data.values()))
+        sql = "INSERT INTO Comment (postid, content) VALUES (%s, %s)"
+        cursor.execute(sql, (postid, content))
         db.conn.commit()
-    return "Comment added successfully!"
 
 #TODO: Create a function for like/dislike functionality
 
@@ -53,12 +48,10 @@ def insert_blog_post(data):
    conn = get_db_connection()
    with conn.cursor() as cursor:
 
-    # Dynamically build the SQL script
     columns = ', '.join(data.keys())
     placeholders = ', '.join(['?'] * len(data))
     sql = f"INSERT INTO Post ({columns}) VALUES ({placeholders})"
     
-    # Execute the query with the data values
     cursor.execute(sql, tuple(data.values()))
     
     db.conn.commit()
@@ -111,7 +104,6 @@ def generate_post():
     )
     response = completion.choices[0].message.content
 
-    #Parse the response to extract the generated post
     lines = response.split("\n")
     data = {}
     content_lines = []
@@ -129,32 +121,31 @@ def generate_post():
 
     content = "\n".join(content_lines)
 
-    # Extract the content from the HTML tags
+    
     match = re.search(r'(<.*?>.*<\/.*?>)', content, re.DOTALL)
     if match:
         data["content"] = match.group(1)
     else:
         data["content"] = content
 
-    # Check if any of the data fields are NULL
+    
     if not data["title"] or not data["content"] or not data["category"]:
         print("Generated post contains NULL values. Skipping database insertion.")
     else:
-        # Insert the data into the database
+        
         insert_blog_post(data)
 
     return response
 
 #Schedule the generation of a blog post every 5 minutes:
-schedule.every(5).minutes.do(generate_post)
+schedule.every(1).minute.do(generate_post)
 
-scheduler_active = True
-# Function to keep the scheduler running
+scheduler_active = False
+
 def run_scheduler():
     while scheduler_active == True:
         schedule.run_pending()
         time.sleep(1)
-
 
 
 if __name__ == "__main__":
