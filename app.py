@@ -1,10 +1,10 @@
-import requests #provides a way to send HTTP requests to a web server
+import requests 
 import db 
-import os #a way to interact with the operating system
-import re #regular expression matching operations
+import os 
+import re 
 import schedule 
 import time 
-import threading #provides a way to run multiple threads (tasks) while the main thread is running
+import threading 
 from flask import Flask, render_template, request
 from openai import OpenAI
 
@@ -42,12 +42,19 @@ def insert_comment(data):
 
 #TODO: Create a function that retreives the comments from the database and associates them with the blog post they belong to
 
+#TODO: create a function that inserts the image returned from the generate_post function into the database
+def insert_image(generated_image)
+    with open(generated_image, "rb") as image_file:
+        image_data = image_file.read()
+
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        sql = "INSERT INTO Post_Images ()"
 
 
 def insert_blog_post(data):
    conn = get_db_connection()
    with conn.cursor() as cursor:
-
     columns = ', '.join(data.keys())
     placeholders = ', '.join(['?'] * len(data))
     sql = f"INSERT INTO Post ({columns}) VALUES ({placeholders})"
@@ -137,8 +144,9 @@ def generate_post():
 
     return response
 
-#Schedule the generation of a blog post every 5 minutes:
-schedule.every(1).minute.do(generate_post)
+#Schedule the generation of a blog post:
+# Thinking one post per day, increment time as needed for testing purposes. 
+schedule.every(24).hours.do(generate_post)
 
 scheduler_active = False
 
