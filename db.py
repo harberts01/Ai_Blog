@@ -1,12 +1,17 @@
-import pyodbc #provides a way to connect to a SQL Server database
+import pyodbc
 
 
-server = 'Juggernaut' 
+server = 'DESKTOP-K59D2AU'  # Updated to match actual computer name
 database = 'Ai_Blog' 
 
-connection_string = f'DRIVER={{SQL Server}};SERVER={server};DATABASE={database};'
+connection_string = f'DRIVER={{SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;'
 
-conn = pyodbc.connect(connection_string)
+try:
+    conn = pyodbc.connect(connection_string)
+    print('Database connection established.')
+except pyodbc.Error as e:
+    print(f'Database connection failed: {e}')
+    conn = None
 
 print('Database connection established.')
 

@@ -1,0 +1,123 @@
+{% extends "base.html" %} {% block title %}My Feed{% endblock %} {% block
+content %}
+<section class="py-5">
+  <div class="container">
+    <div class="row">
+      <!-- Sidebar -->
+      <div class="col-lg-3 mb-4">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-primary text-white">
+            <i class="bi bi-bell me-2"></i>My Subscriptions
+          </div>
+          <div class="card-body">
+            {% if subscriptions %}
+            <ul class="list-unstyled mb-0">
+              {% for sub in subscriptions %}
+              <li class="mb-2">
+                <a
+                  href="{{ url_for('tool_page', slug=sub.slug) }}"
+                  class="text-decoration-none"
+                >
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {{ sub.name }}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            <hr />
+            <a
+              href="{{ url_for('subscriptions') }}"
+              class="btn btn-outline-primary btn-sm w-100"
+            >
+              <i class="bi bi-gear me-1"></i>Manage Subscriptions
+            </a>
+            {% else %}
+            <p class="text-muted mb-3">
+              You haven't subscribed to any AI tools yet.
+            </p>
+            <a
+              href="{{ url_for('subscriptions') }}"
+              class="btn btn-primary btn-sm w-100"
+            >
+              <i class="bi bi-plus-circle me-1"></i>Add Subscriptions
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="col-lg-9">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="mb-0"><i class="bi bi-rss me-2"></i>My Feed</h2>
+          <span class="badge bg-primary">{{ posts|length }} posts</span>
+        </div>
+
+        {% if posts %}
+        <div class="row g-4">
+          {% for post in posts %}
+          <div class="col-md-6">
+            <article class="card post-card h-100 border-0 shadow-sm">
+              <div class="card-body">
+                {% if post.tool_name %}
+                <a
+                  href="{{ url_for('tool_page', slug=post.tool_slug) }}"
+                  class="badge bg-primary text-decoration-none mb-2"
+                >
+                  {{ post.tool_name }}
+                </a>
+                {% endif %}
+                <span class="badge bg-secondary mb-2">{{ post.category }}</span>
+
+                <h5 class="card-title">
+                  <a
+                    href="{{ url_for('post', post_id=post.id) }}"
+                    class="text-decoration-none text-dark"
+                  >
+                    {{ post.title }}
+                  </a>
+                </h5>
+
+                <p class="card-text text-muted small">
+                  {{ post.content|striptags|truncate(120) }}
+                </p>
+              </div>
+              <div class="card-footer bg-transparent border-0 pt-0">
+                <div class="d-flex justify-content-between align-items-center">
+                  <small class="text-muted">
+                    {% if post.created_at %}
+                    <i class="bi bi-calendar3 me-1"></i>
+                    {{ post.created_at.strftime('%b %d, %Y') }} {% endif %}
+                  </small>
+                  <a
+                    href="{{ url_for('post', post_id=post.id) }}"
+                    class="btn btn-sm btn-outline-primary"
+                  >
+                    Read More
+                  </a>
+                </div>
+              </div>
+            </article>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card border-0 shadow-sm">
+          <div class="card-body text-center py-5">
+            <i class="bi bi-inbox display-1 text-muted"></i>
+            <h4 class="mt-3">Your feed is empty</h4>
+            <p class="text-muted mb-4">
+              Subscribe to AI tools to see their posts in your personalized
+              feed.
+            </p>
+            <a href="{{ url_for('subscriptions') }}" class="btn btn-primary">
+              <i class="bi bi-plus-circle me-2"></i>Browse AI Tools
+            </a>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

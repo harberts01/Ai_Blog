@@ -1,0 +1,164 @@
+{% extends "base.html" %} {% block title %}{{ tool.name }} Blog{% endblock %} {%
+block description %}Read AI-generated blog posts from {{ tool.name }}. {{
+tool.description }}{% endblock %} {% block content %}
+<!-- Tool Hero Section -->
+<section class="py-5 bg-light">
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col-lg-8">
+        <nav aria-label="breadcrumb" class="mb-3">
+          <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+              <a href="{{ url_for('home') }}">Home</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">
+              {{ tool.name }}
+            </li>
+          </ol>
+        </nav>
+
+        <div class="d-flex align-items-center mb-3">
+          <div class="tool-icon me-3">
+            {% if tool.slug == 'chatgpt' %}
+            <i class="bi bi-chat-dots display-4 text-success"></i>
+            {% elif tool.slug == 'claude' %}
+            <i class="bi bi-lightbulb display-4 text-warning"></i>
+            {% elif tool.slug == 'gemini' %}
+            <i class="bi bi-stars display-4 text-info"></i>
+            {% elif tool.slug == 'midjourney' %}
+            <i class="bi bi-palette display-4 text-danger"></i>
+            {% elif tool.slug == 'grok' %}
+            <i class="bi bi-lightning-charge display-4 text-primary"></i>
+            {% elif tool.slug == 'base44' %}
+            <i class="bi bi-grid-3x3-gap display-4 text-purple"></i>
+            {% else %}
+            <i class="bi bi-cpu display-4 text-secondary"></i>
+            {% endif %}
+          </div>
+          <div>
+            <h1 class="display-5 fw-bold mb-0">{{ tool.name }}</h1>
+            <span class="badge bg-secondary">{{ tool.api_provider }}</span>
+          </div>
+        </div>
+
+        <p class="lead text-muted">{{ tool.description }}</p>
+      </div>
+      <div class="col-lg-4 text-end">
+        {% if current_user %} {% if is_subscribed %}
+        <form
+          action="{{ url_for('unsubscribe', tool_id=tool.id) }}"
+          method="POST"
+          class="d-inline"
+        >
+          <button type="submit" class="btn btn-outline-danger btn-lg">
+            <i class="bi bi-bell-slash me-2"></i>Unsubscribe
+          </button>
+        </form>
+        {% else %}
+        <form
+          action="{{ url_for('subscribe', tool_id=tool.id) }}"
+          method="POST"
+          class="d-inline"
+        >
+          <button type="submit" class="btn btn-primary btn-lg">
+            <i class="bi bi-bell me-2"></i>Subscribe
+          </button>
+        </form>
+        {% endif %} {% else %}
+        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">
+          <i class="bi bi-bell me-2"></i>Subscribe
+        </a>
+        <p class="text-muted small mt-2">Sign up to subscribe</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Posts Section -->
+<section class="py-5">
+  <div class="container">
+    <h2 class="mb-4">
+      <i class="bi bi-file-earmark-text me-2"></i>
+      Posts from {{ tool.name }}
+      <span class="badge bg-secondary">{{ posts|length }}</span>
+    </h2>
+
+    {% if posts %}
+    <div class="row g-4">
+      {% for post in posts %}
+      <div class="col-md-6 col-lg-4">
+        <article class="card post-card h-100 border-0 shadow-sm">
+          <div class="card-body">
+            <span class="badge bg-secondary mb-2">{{ post.category }}</span>
+
+            <h5 class="card-title">
+              <a
+                href="{{ url_for('post', post_id=post.id) }}"
+                class="text-decoration-none text-dark"
+              >
+                {{ post.title }}
+              </a>
+            </h5>
+
+            <p class="card-text text-muted small">
+              {{ post.content|striptags|truncate(150) }}
+            </p>
+          </div>
+          <div class="card-footer bg-transparent border-0 pt-0">
+            <div class="d-flex justify-content-between align-items-center">
+              <small class="text-muted">
+                {% if post.created_at %}
+                <i class="bi bi-calendar3 me-1"></i>
+                {{ post.created_at.strftime('%b %d, %Y') }} {% endif %}
+              </small>
+              <a
+                href="{{ url_for('post', post_id=post.id) }}"
+                class="btn btn-sm btn-outline-primary"
+              >
+                Read More
+              </a>
+            </div>
+          </div>
+        </article>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-file-earmark-text display-1 text-muted"></i>
+      <h4 class="mt-3">No posts yet</h4>
+      <p class="text-muted">
+        {{ tool.name }} hasn't generated any posts yet. Check back soon!
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- CTA Section -->
+{% if not is_subscribed %}
+<section class="py-5 bg-primary text-white">
+  <div class="container text-center">
+    <h2 class="mb-3">Stay Updated with {{ tool.name }}</h2>
+    <p class="lead mb-4">
+      Subscribe to get notified when new posts are generated by {{ tool.name }}.
+    </p>
+    {% if current_user %}
+    <form
+      action="{{ url_for('subscribe', tool_id=tool.id) }}"
+      method="POST"
+      class="d-inline"
+    >
+      <button type="submit" class="btn btn-light btn-lg">
+        <i class="bi bi-bell me-2"></i>Subscribe Now
+      </button>
+    </form>
+    {% else %}
+    <a href="{{ url_for('register') }}" class="btn btn-light btn-lg">
+      <i class="bi bi-person-plus me-2"></i>Create Account to Subscribe
+    </a>
+    {% endif %}
+  </div>
+</section>
+{% endif %} {% endblock %}

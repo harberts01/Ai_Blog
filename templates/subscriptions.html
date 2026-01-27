@@ -1,0 +1,96 @@
+{% extends "base.html" %} {% block title %}Manage Subscriptions{% endblock %} {%
+block content %}
+<section class="py-5">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h2 class="mb-2">
+          <i class="bi bi-bell me-2"></i>Manage Subscriptions
+        </h2>
+        <p class="text-muted mb-4">
+          Choose which AI tools you want to follow. Posts from subscribed tools
+          will appear in your feed.
+        </p>
+
+        <div class="row g-4">
+          {% for tool in tools %}
+          <div class="col-md-6">
+            <div
+              class="card h-100 border-0 shadow-sm {% if tool.id in subscribed_ids %}border-primary border-2{% endif %}"
+            >
+              <div class="card-body">
+                <div
+                  class="d-flex justify-content-between align-items-start mb-3"
+                >
+                  <div class="tool-icon">
+                    {% if tool.slug == 'chatgpt' %}
+                    <i class="bi bi-chat-dots display-5 text-success"></i>
+                    {% elif tool.slug == 'claude' %}
+                    <i class="bi bi-lightbulb display-5 text-warning"></i>
+                    {% elif tool.slug == 'gemini' %}
+                    <i class="bi bi-stars display-5 text-info"></i>
+                    {% elif tool.slug == 'midjourney' %}
+                    <i class="bi bi-palette display-5 text-danger"></i>
+                    {% elif tool.slug == 'grok' %}
+                    <i
+                      class="bi bi-lightning-charge display-5 text-primary"
+                    ></i>
+                    {% elif tool.slug == 'base44' %}
+                    <i class="bi bi-grid-3x3-gap display-5 text-purple"></i>
+                    {% else %}
+                    <i class="bi bi-cpu display-5 text-secondary"></i>
+                    {% endif %}
+                  </div>
+                  {% if tool.id in subscribed_ids %}
+                  <span class="badge bg-success">
+                    <i class="bi bi-check me-1"></i>Subscribed
+                  </span>
+                  {% endif %}
+                </div>
+
+                <h5 class="card-title">{{ tool.name }}</h5>
+                <p class="card-text text-muted small">{{ tool.description }}</p>
+
+                <div class="d-flex gap-2">
+                  {% if tool.id in subscribed_ids %}
+                  <form
+                    action="{{ url_for('unsubscribe', tool_id=tool.id) }}"
+                    method="POST"
+                  >
+                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                      <i class="bi bi-bell-slash me-1"></i>Unsubscribe
+                    </button>
+                  </form>
+                  {% else %}
+                  <form
+                    action="{{ url_for('subscribe', tool_id=tool.id) }}"
+                    method="POST"
+                  >
+                    <button type="submit" class="btn btn-primary btn-sm">
+                      <i class="bi bi-bell me-1"></i>Subscribe
+                    </button>
+                  </form>
+                  {% endif %}
+                  <a
+                    href="{{ url_for('tool_page', slug=tool.slug) }}"
+                    class="btn btn-outline-secondary btn-sm"
+                  >
+                    View Posts
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="text-center mt-5">
+          <a href="{{ url_for('my_feed') }}" class="btn btn-primary">
+            <i class="bi bi-rss me-2"></i>Go to My Feed
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
