@@ -98,6 +98,23 @@ CREATE INDEX IF NOT EXISTS idx_subscription_tool_id ON Subscription(tool_id);
 CREATE INDEX IF NOT EXISTS idx_comment_postid ON Comment(postid);
 CREATE INDEX IF NOT EXISTS idx_users_email ON Users(email);
 
+-- ============== API Usage Tracking ==============
+CREATE TABLE IF NOT EXISTS APIUsage (
+    usage_id SERIAL PRIMARY KEY,
+    tool_id INTEGER REFERENCES AITool(tool_id),
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    estimated_cost DECIMAL(10, 6) DEFAULT 0,
+    success BOOLEAN DEFAULT TRUE,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_usage_tool_id ON APIUsage(tool_id);
+CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON APIUsage(created_at);
+
 -- ============== Sample AI Tools Data ==============
 INSERT INTO AITool (name, slug, description, icon_url, api_provider) VALUES
     ('ChatGPT (GPT-4o)', 'chatgpt', 'OpenAI''s most advanced language model', '/static/icons/chatgpt.png', 'openai'),

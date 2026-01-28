@@ -46,6 +46,64 @@
   background-color: var(--purple-color) !important;
 }
 
+/* ========== AI Tool Brand Colors ========== */
+.text-chatgpt {
+  color: #10a37f !important; /* OpenAI teal-green */
+}
+
+.text-claude {
+  color: #d97757 !important; /* Anthropic coral/orange */
+}
+
+.text-gemini {
+  background: linear-gradient(135deg, #4285f4, #ea4335, #fbbc04, #34a853);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-midjourney {
+  color: #fff !important; /* Midjourney white on dark */
+}
+
+.text-midjourney-dark {
+  color: #1a1a2e !important; /* Midjourney dark purple */
+}
+
+.text-grok {
+  color: #1d9bf0 !important; /* X/Twitter blue */
+}
+
+.text-copilot {
+  color: #0078d4 !important; /* GitHub/Microsoft blue */
+}
+
+.text-jasper {
+  color: #ff5733 !important; /* Jasper orange-red */
+}
+
+.text-llama {
+  color: #764abc !important; /* Meta purple */
+}
+
+.bg-chatgpt {
+  background-color: #10a37f !important;
+}
+
+.bg-claude {
+  background-color: #d97757 !important;
+}
+
+.bg-midjourney {
+  background-color: #1a1a2e !important;
+}
+
+.tool-icon.midjourney-icon {
+  background-color: #1a1a2e;
+  border-radius: 50%;
+  padding: 0.75rem;
+}
+
 /* ========== Base Styles ========== */
 body {
   font-family: var(--body-font);
@@ -164,8 +222,20 @@ a:hover {
   transition: var(--transition);
 }
 
+.post-card .card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 .post-card .card-title a {
   transition: var(--transition);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .post-card .card-title a:hover {
@@ -228,6 +298,11 @@ a:hover {
   font-weight: 500;
   padding: 0.375rem 0.75rem;
   border-radius: 0.375rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
 }
 
 /* ========== Alerts ========== */
@@ -318,11 +393,16 @@ footer {
 }
 
 footer a {
+  color: rgba(255, 255, 255, 0.75) !important;
   transition: var(--transition);
 }
 
 footer a:hover {
   color: #fff !important;
+}
+
+footer .text-muted {
+  color: rgba(255, 255, 255, 0.6) !important;
 }
 
 /* ========== Breadcrumb ========== */

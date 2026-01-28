@@ -311,15 +311,18 @@ def get_posts_by_category(category, page=1, per_page=POSTS_PER_PAGE):
 
 
 def get_categories_with_counts():
-    """Get all categories with their post counts"""
+    """Get all categories with their distinct tool counts (for comparison feature)"""
     connection = get_connection()
     if not connection:
         return []
     try:
         with connection.cursor() as cursor:
+            # Count distinct tools per category, not just posts
+            # This enables filtering for categories that can be compared (2+ different tools)
             cursor.execute("""
-                SELECT Category, COUNT(*) as count
+                SELECT Category, COUNT(DISTINCT tool_id) as count
                 FROM Post
+                WHERE tool_id IS NOT NULL
                 GROUP BY Category
                 ORDER BY count DESC
             """)
@@ -387,6 +390,25 @@ def insert_post(title, content, category, tool_id=None):
     except Exception as e:
         print(f"Error inserting post: {e}")
         return None
+    finally:
+        connection.close()
+
+
+def get_last_post_date_for_tool(tool_id):
+    """Get the date of the most recent post for a specific tool"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT CreatedAt FROM Post 
+                WHERE tool_id = %s 
+                ORDER BY CreatedAt DESC 
+                LIMIT 1
+            """, (tool_id,))
+            row = cursor.fetchone()
+            return row[0] if row else None
     finally:
         connection.close()
 
@@ -559,6 +581,21 @@ def get_user_subscriptions(user_id):
                 }
                 for row in cursor.fetchall()
             ]
+    finally:
+        connection.close()
+
+
+def get_subscribed_tool_ids(user_id):
+    """Get list of tool IDs that a user is subscribed to"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT tool_id FROM Subscription WHERE user_id = %s
+            """, (user_id,))
+            return [row[0] for row in cursor.fetchall()]
     finally:
         connection.close()
 
@@ -891,6 +928,167 @@ def get_bookmarked_post_ids(user_id):
         connection.close()
 
 
+# ============== API Usage Tracking ==============
+
+# Estimated costs per 1K tokens (input/output) - Updated Jan 2026
+API_COSTS = {
+    'openai': {
+        'gpt-4o': {'input': 0.0025, 'output': 0.010},
+        'gpt-4o-mini': {'input': 0.00015, 'output': 0.0006},
+        'gpt-4-turbo': {'input': 0.01, 'output': 0.03},
+    },
+    'anthropic': {
+        'claude-3-5-sonnet-20241022': {'input': 0.003, 'output': 0.015},
+        'claude-3-opus-20240229': {'input': 0.015, 'output': 0.075},
+        'claude-3-haiku-20240307': {'input': 0.00025, 'output': 0.00125},
+    },
+    'google': {
+        'gemini-1.5-pro': {'input': 0.00125, 'output': 0.005},
+        'gemini-1.5-flash': {'input': 0.000075, 'output': 0.0003},
+    },
+    'together': {
+        'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo': {'input': 0.005, 'output': 0.015},
+        'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo': {'input': 0.00088, 'output': 0.00088},
+    },
+    'xai': {
+        'grok-2-latest': {'input': 0.002, 'output': 0.010},
+        'grok-2': {'input': 0.002, 'output': 0.010},
+    },
+    'jasper': {
+        'jasper': {'input': 0.01, 'output': 0.01},  # Jasper uses credit-based pricing, estimate
+    }
+}
+
+
+def calculate_api_cost(provider, model, input_tokens, output_tokens):
+    """Calculate estimated cost for an API call"""
+    provider_costs = API_COSTS.get(provider, {})
+    model_costs = provider_costs.get(model, {'input': 0.01, 'output': 0.01})  # Default fallback
+    
+    input_cost = (input_tokens / 1000) * model_costs['input']
+    output_cost = (output_tokens / 1000) * model_costs['output']
+    
+    return round(input_cost + output_cost, 6)
+
+
+def log_api_usage(tool_id, provider, model, input_tokens=0, output_tokens=0, success=True, error_message=None):
+    """Log an API usage record"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        estimated_cost = calculate_api_cost(provider, model, input_tokens, output_tokens)
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO APIUsage (tool_id, provider, model, input_tokens, output_tokens, estimated_cost, success, error_message)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING usage_id
+            """, (tool_id, provider, model, input_tokens, output_tokens, estimated_cost, success, error_message))
+            usage_id = cursor.fetchone()[0]
+            connection.commit()
+            return usage_id
+    except Exception as e:
+        print(f"Error logging API usage: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def get_api_usage_stats(days=30):
+    """Get API usage statistics for the specified period"""
+    # Default structure to return if no data or connection error
+    default_stats = {
+        'per_tool': [],
+        'totals': {
+            'total_requests': 0,
+            'total_input_tokens': 0,
+            'total_output_tokens': 0,
+            'total_cost': 0.0,
+            'failed_requests': 0
+        },
+        'daily': [],
+        'period_days': days
+    }
+    
+    connection = get_connection()
+    if not connection:
+        return default_stats
+    try:
+        with connection.cursor() as cursor:
+            # Usage per tool
+            cursor.execute("""
+                SELECT t.name, t.slug, 
+                       COUNT(a.usage_id) as requests,
+                       COALESCE(SUM(a.input_tokens), 0) as total_input_tokens,
+                       COALESCE(SUM(a.output_tokens), 0) as total_output_tokens,
+                       COALESCE(SUM(a.estimated_cost), 0) as total_cost,
+                       COUNT(CASE WHEN a.success = FALSE THEN 1 END) as failed_requests
+                FROM AITool t
+                LEFT JOIN APIUsage a ON t.tool_id = a.tool_id 
+                    AND a.created_at >= CURRENT_DATE - INTERVAL '%s days'
+                GROUP BY t.tool_id, t.name, t.slug
+                ORDER BY total_cost DESC
+            """, (days,))
+            usage_per_tool = [
+                {
+                    'name': row[0],
+                    'slug': row[1],
+                    'requests': int(row[2]) if row[2] else 0,
+                    'input_tokens': int(row[3]) if row[3] else 0,
+                    'output_tokens': int(row[4]) if row[4] else 0,
+                    'total_cost': float(row[5]) if row[5] else 0.0,
+                    'failed_requests': int(row[6]) if row[6] else 0
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            # Total stats
+            cursor.execute("""
+                SELECT COUNT(*) as total_requests,
+                       COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                       COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                       COALESCE(SUM(estimated_cost), 0) as total_cost,
+                       COUNT(CASE WHEN success = FALSE THEN 1 END) as failed_requests
+                FROM APIUsage
+                WHERE created_at >= CURRENT_DATE - INTERVAL '%s days'
+            """, (days,))
+            row = cursor.fetchone()
+            totals = {
+                'total_requests': int(row[0]) if row[0] else 0,
+                'total_input_tokens': int(row[1]) if row[1] else 0,
+                'total_output_tokens': int(row[2]) if row[2] else 0,
+                'total_cost': float(row[3]) if row[3] else 0.0,
+                'failed_requests': int(row[4]) if row[4] else 0
+            }
+            
+            # Daily usage for chart
+            cursor.execute("""
+                SELECT DATE(created_at) as date, 
+                       COUNT(*) as requests,
+                       COALESCE(SUM(estimated_cost), 0) as cost
+                FROM APIUsage
+                WHERE created_at >= CURRENT_DATE - INTERVAL '%s days'
+                GROUP BY DATE(created_at)
+                ORDER BY date
+            """, (days,))
+            daily_usage = [
+                {'date': row[0].strftime('%Y-%m-%d'), 'requests': row[1], 'cost': float(row[2])}
+                for row in cursor.fetchall()
+            ]
+            
+            return {
+                'per_tool': usage_per_tool,
+                'totals': totals,
+                'daily': daily_usage,
+                'period_days': days
+            }
+    except Exception as e:
+        print(f"Error getting API usage stats: {e}")
+        return default_stats
+    finally:
+        connection.close()
+
+
 # ============== Admin Functions ==============
 
 def get_admin_statistics():
@@ -943,13 +1141,13 @@ def get_admin_statistics():
             
             # Posts per tool
             cursor.execute("""
-                SELECT t.name, COUNT(p.postid) as count
+                SELECT t.name, t.slug, COUNT(p.postid) as count
                 FROM AITool t
                 LEFT JOIN Post p ON t.tool_id = p.tool_id
-                GROUP BY t.tool_id, t.name
+                GROUP BY t.tool_id, t.name, t.slug
                 ORDER BY count DESC
             """)
-            stats['posts_per_tool'] = [{'name': row[0], 'count': row[1]} for row in cursor.fetchall()]
+            stats['posts_per_tool'] = [{'name': row[0], 'slug': row[1], 'count': row[2]} for row in cursor.fetchall()]
             
             # Recent posts (last 10)
             cursor.execute("""

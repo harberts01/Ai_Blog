@@ -66,7 +66,7 @@ def add_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
         "img-src 'self' data: https:; "
-        "connect-src 'self'; "
+        "connect-src 'self' https://cdn.jsdelivr.net; "
         "frame-ancestors 'self';"
     )
     return response
@@ -293,7 +293,7 @@ def login():
             next_page = request.args.get('next')
             if next_page:
                 return redirect(next_page)
-            return redirect(url_for('home'))
+            return redirect(url_for('my_feed'))
         else:
             flash('Invalid email or password.', 'error')
     
@@ -462,7 +462,8 @@ def bookmarks():
 def admin_dashboard():
     """Admin dashboard with statistics and overview"""
     stats = db.get_admin_statistics()
-    return render_template("admin/dashboard.html", stats=stats)
+    api_usage = db.get_api_usage_stats(days=30)
+    return render_template("admin/dashboard.html", stats=stats, api_usage=api_usage)
 
 
 @app.route("/admin/users")
@@ -875,20 +876,27 @@ def api_stats():
 # ============== Main ==============
 
 if __name__ == "__main__":
-    # Setup scheduler with app context for notifications
-    def generate_with_notifications():
-        ai_generators.generate_all_posts(app=app)
-    
-    schedule.every(24).hours.do(generate_with_notifications)
-    schedule.every(30).days.do(cleanup_spam_comments)
-    
-    scheduler_active = True
-    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-    scheduler_thread.start()
-    
     print("🚀 AI Blog is starting...")
-    print("📝 Scheduler active - will generate posts every 24 hours")
-    print("🗑️  Spam cleanup scheduled - will delete old spam comments every 30 days")
+    
+    # Setup scheduler with app context for notifications (if enabled)
+    if Config.SCHEDULER_ENABLED:
+        def generate_with_notifications():
+            ai_generators.generate_all_posts(app=app)
+        
+        # Run daily at 9 AM to check which tools need new posts
+        # Each tool posts once per week, so with 6 tools = ~1 post/day
+        schedule.every().day.at("09:00").do(generate_with_notifications)
+        schedule.every(30).days.do(cleanup_spam_comments)
+        
+        scheduler_active = True
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
+        
+        print("📝 Scheduler active - daily check at 9 AM (each tool posts weekly)")
+        print("🗑️ Spam cleanup scheduled - will delete old spam comments every 30 days")
+    else:
+        print("📝 Scheduler disabled (set SCHEDULER_ENABLED=true to enable)")
+    
     print("🌐 Visit http://127.0.0.1:5000")
     
     app.run(debug=True)

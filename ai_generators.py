@@ -4,8 +4,77 @@ Handles automated blog post generation using various AI providers
 """
 import time
 import requests
+import traceback
+from datetime import datetime
 from config import Config
 import database as db
+
+
+# ============== Logging Utilities ==============
+
+def _log_debug(message, level="INFO"):
+    """Print a formatted debug message with timestamp"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    prefix = {
+        "INFO": "ℹ️",
+        "DEBUG": "🔍",
+        "SUCCESS": "✅",
+        "WARNING": "⚠️",
+        "ERROR": "❌",
+        "API": "🌐"
+    }.get(level, "•")
+    print(f"[{timestamp}] {prefix} {message}")
+
+
+def _log_api_error(provider, model, error, response=None):
+    """Log detailed API error information for debugging"""
+    _log_debug(f"{'='*60}", "ERROR")
+    _log_debug(f"API ERROR - {provider.upper()}", "ERROR")
+    _log_debug(f"{'='*60}", "ERROR")
+    _log_debug(f"Provider: {provider}", "ERROR")
+    _log_debug(f"Model: {model}", "ERROR")
+    _log_debug(f"Error Type: {type(error).__name__}", "ERROR")
+    _log_debug(f"Error Message: {str(error)}", "ERROR")
+    
+    # Extract additional details from common error types
+    if hasattr(error, 'status_code'):
+        _log_debug(f"Status Code: {error.status_code}", "ERROR")
+    if hasattr(error, 'response'):
+        try:
+            _log_debug(f"Response Body: {error.response.text if hasattr(error.response, 'text') else error.response}", "ERROR")
+        except:
+            pass
+    if hasattr(error, 'body'):
+        _log_debug(f"Error Body: {error.body}", "ERROR")
+    if hasattr(error, 'message'):
+        _log_debug(f"Error Detail: {error.message}", "ERROR")
+    
+    # For HTTP responses
+    if response is not None:
+        _log_debug(f"HTTP Status: {response.status_code}", "ERROR")
+        _log_debug(f"Response Headers: {dict(response.headers)}", "DEBUG")
+        try:
+            _log_debug(f"Response JSON: {response.json()}", "ERROR")
+        except:
+            _log_debug(f"Response Text: {response.text[:500]}", "ERROR")
+    
+    # Print stack trace
+    _log_debug("Stack Trace:", "ERROR")
+    traceback.print_exc()
+    _log_debug(f"{'='*60}", "ERROR")
+    
+    # Provide helpful hints based on common errors
+    error_str = str(error).lower()
+    if "not found" in error_str or "404" in error_str:
+        _log_debug("HINT: Model may be deprecated or renamed. Check provider documentation for current model names.", "WARNING")
+    elif "unauthorized" in error_str or "401" in error_str:
+        _log_debug("HINT: API key may be invalid or expired. Check your .env file.", "WARNING")
+    elif "forbidden" in error_str or "403" in error_str:
+        _log_debug("HINT: Access denied. Check if your account has credits/permissions for this model.", "WARNING")
+    elif "rate limit" in error_str or "429" in error_str:
+        _log_debug("HINT: Rate limited. Wait a moment before retrying.", "WARNING")
+    elif "quota" in error_str:
+        _log_debug("HINT: API quota exceeded. Check your billing/usage limits.", "WARNING")
 
 
 # ============== Blog Categories ==============
@@ -68,7 +137,7 @@ def _get_gemini_model():
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=Config.GOOGLE_API_KEY)
-                _clients['gemini'] = genai.GenerativeModel('gemini-1.5-pro')
+                _clients['gemini'] = genai.GenerativeModel('gemini-2.0-flash')
             except ImportError:
                 print("Warning: google-generativeai package not installed")
                 _clients['gemini'] = None
@@ -93,18 +162,27 @@ def _get_together_client():
 
 
 def _get_mistral_client():
-    """Get or create Mistral client"""
-    if 'mistral' not in _clients:
-        if Config.MISTRAL_API_KEY:
+    """Get or create Mistral client - DEPRECATED, use xAI"""
+    return None
+
+
+def _get_xai_client():
+    """Get or create xAI client for Grok"""
+    if 'xai' not in _clients:
+        if Config.XAI_API_KEY:
             try:
-                from mistralai import Mistral
-                _clients['mistral'] = Mistral(api_key=Config.MISTRAL_API_KEY)
+                from openai import OpenAI
+                # xAI uses OpenAI-compatible API
+                _clients['xai'] = OpenAI(
+                    api_key=Config.XAI_API_KEY,
+                    base_url="https://api.x.ai/v1"
+                )
             except ImportError:
-                print("Warning: mistralai package not installed")
-                _clients['mistral'] = None
+                print("Warning: openai package not installed")
+                _clients['xai'] = None
         else:
-            _clients['mistral'] = None
-    return _clients['mistral']
+            _clients['xai'] = None
+    return _clients['xai']
 
 
 # ============== Prompt Building ==============
@@ -158,7 +236,7 @@ IMPORTANT CONSTRAINTS:
    - Practical how-to guides
 
 FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
-Title: [A catchy, engaging title]
+Title: [A catchy, engaging title - MAXIMUM 60 characters]
 Category: [Choose from the available categories above]
 Content:
 [Your blog post in HTML format, 500-800 words, with proper <h2>, <p>, <ul>, <li> tags]"""
@@ -170,82 +248,166 @@ Content:
 
 def generate_with_openai(model, system_prompt, user_prompt):
     """Generate content using OpenAI API"""
+    _log_debug(f"OpenAI API call starting - Model: {model}", "API")
+    
     client = _get_openai_client()
     if not client:
         raise Exception("OpenAI client not initialized - check OPENAI_API_KEY")
     
-    completion = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    return completion.choices[0].message.content
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        # Extract token usage
+        usage = completion.usage
+        _log_debug(f"OpenAI API success - Tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out", "SUCCESS")
+        
+        return {
+            'content': completion.choices[0].message.content,
+            'input_tokens': usage.prompt_tokens if usage else 0,
+            'output_tokens': usage.completion_tokens if usage else 0
+        }
+    except Exception as e:
+        _log_api_error('openai', model, e)
+        raise
 
 
 def generate_with_anthropic(model, system_prompt, user_prompt):
     """Generate content using Anthropic Claude API"""
+    _log_debug(f"Anthropic API call starting - Model: {model}", "API")
+    
     client = _get_anthropic_client()
     if not client:
         raise Exception("Anthropic client not initialized - check ANTHROPIC_API_KEY")
     
-    message = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=system_prompt,
-        messages=[
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    return message.content[0].text
+    try:
+        message = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        # Extract token usage
+        usage = message.usage
+        _log_debug(f"Anthropic API success - Tokens: {usage.input_tokens} in / {usage.output_tokens} out", "SUCCESS")
+        
+        return {
+            'content': message.content[0].text,
+            'input_tokens': usage.input_tokens if usage else 0,
+            'output_tokens': usage.output_tokens if usage else 0
+        }
+    except Exception as e:
+        _log_api_error('anthropic', model, e)
+        raise
 
 
 def generate_with_google(model, system_prompt, user_prompt):
     """Generate content using Google Gemini API"""
+    _log_debug(f"Google Gemini API call starting - Model: {model}", "API")
+    
     gemini = _get_gemini_model()
     if not gemini:
         raise Exception("Gemini client not initialized - check GOOGLE_API_KEY")
     
-    full_prompt = f"{system_prompt}\n\n{user_prompt}"
-    response = gemini.generate_content(full_prompt)
-    return response.text
+    try:
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response = gemini.generate_content(full_prompt)
+        
+        # Estimate tokens (Gemini doesn't always return exact counts)
+        input_tokens = len(full_prompt.split()) * 1.3  # Rough estimate
+        output_tokens = len(response.text.split()) * 1.3 if response.text else 0
+        
+        _log_debug(f"Google Gemini API success - Est. tokens: {int(input_tokens)} in / {int(output_tokens)} out", "SUCCESS")
+        
+        return {
+            'content': response.text,
+            'input_tokens': int(input_tokens),
+            'output_tokens': int(output_tokens)
+        }
+    except Exception as e:
+        _log_api_error('google', model, e)
+        raise
 
 
 def generate_with_together(model, system_prompt, user_prompt):
     """Generate content using Together AI (Llama) API"""
+    _log_debug(f"Together AI API call starting - Model: {model}", "API")
+    
     client = _get_together_client()
     if not client:
         raise Exception("Together client not initialized - check TOGETHER_API_KEY")
     
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        # Extract token usage
+        usage = response.usage
+        _log_debug(f"Together AI API success - Tokens: {usage.prompt_tokens if usage else 0} in / {usage.completion_tokens if usage else 0} out", "SUCCESS")
+        
+        return {
+            'content': response.choices[0].message.content,
+            'input_tokens': usage.prompt_tokens if usage else 0,
+            'output_tokens': usage.completion_tokens if usage else 0
+        }
+    except Exception as e:
+        _log_api_error('together', model, e)
+        raise
 
 
 def generate_with_mistral(model, system_prompt, user_prompt):
-    """Generate content using Mistral AI API"""
-    client = _get_mistral_client()
-    if not client:
-        raise Exception("Mistral client not initialized - check MISTRAL_API_KEY")
+    """DEPRECATED - Use generate_with_xai instead"""
+    raise Exception("Mistral has been replaced with Grok. Use 'xai' provider.")
+
+
+def generate_with_xai(model, system_prompt, user_prompt):
+    """Generate content using xAI API (Grok)"""
+    _log_debug(f"xAI (Grok) API call starting - Model: {model}", "API")
     
-    response = client.chat.complete(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    return response.choices[0].message.content
+    client = _get_xai_client()
+    if not client:
+        raise Exception("xAI client not initialized - check XAI_API_KEY")
+    
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        # Extract token usage
+        usage = completion.usage
+        _log_debug(f"xAI API success - Tokens: {usage.prompt_tokens if usage else 0} in / {usage.completion_tokens if usage else 0} out", "SUCCESS")
+        
+        return {
+            'content': completion.choices[0].message.content,
+            'input_tokens': usage.prompt_tokens if usage else 0,
+            'output_tokens': usage.completion_tokens if usage else 0
+        }
+    except Exception as e:
+        _log_api_error('xai', model, e)
+        raise
 
 
 def generate_with_jasper(system_prompt, user_prompt):
     """Generate content using Jasper AI API"""
+    _log_debug("Jasper API call starting", "API")
+    
     if not Config.JASPER_API_KEY:
         raise Exception("Jasper API key not configured - check JASPER_API_KEY")
     
@@ -260,16 +422,31 @@ def generate_with_jasper(system_prompt, user_prompt):
         }
     }
     
-    response = requests.post(
-        "https://api.jasper.ai/v1/command",
-        headers=headers,
-        json=payload
-    )
-    
-    if response.status_code == 200:
-        return response.json().get("output", "")
-    else:
-        raise Exception(f"Jasper API error: {response.status_code} - {response.text}")
+    try:
+        response = requests.post(
+            "https://api.jasper.ai/v1/command",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code == 200:
+            output = response.json().get("output", "")
+            # Estimate tokens for Jasper
+            input_tokens = len(f"{system_prompt}\n\n{user_prompt}".split()) * 1.3
+            output_tokens = len(output.split()) * 1.3
+            _log_debug(f"Jasper API success - Est. tokens: {int(input_tokens)} in / {int(output_tokens)} out", "SUCCESS")
+            return {
+                'content': output,
+                'input_tokens': int(input_tokens),
+                'output_tokens': int(output_tokens)
+            }
+        else:
+            error = Exception(f"Jasper API error: {response.status_code} - {response.text}")
+            _log_api_error('jasper', 'jasper', error, response)
+            raise error
+    except requests.exceptions.RequestException as e:
+        _log_api_error('jasper', 'jasper', e)
+        raise
 
 
 # Provider dispatch map
@@ -278,7 +455,7 @@ PROVIDER_GENERATORS = {
     'anthropic': generate_with_anthropic,
     'google': generate_with_google,
     'together': generate_with_together,
-    'mistral': generate_with_mistral,
+    'xai': generate_with_xai,
 }
 
 
@@ -311,7 +488,18 @@ def parse_ai_response(response, tool_id):
         elif in_content:
             content_lines.append(line)
     
-    data['content'] = '\n'.join(content_lines).strip()
+    content = '\n'.join(content_lines).strip()
+    
+    # Clean up markdown code fences that AI might include
+    import re
+    # Remove ```html, ```HTML, ``` markers
+    content = re.sub(r'^```(?:html|HTML)?\s*\n?', '', content)
+    content = re.sub(r'\n?```\s*$', '', content)
+    # Also remove any remaining code fences in the middle
+    content = re.sub(r'```(?:html|HTML)?\s*\n?', '', content)
+    content = re.sub(r'\n?```', '', content)
+    
+    data['content'] = content.strip()
     
     if data.get('title') and data.get('content') and data.get('category'):
         return data
@@ -329,15 +517,24 @@ def generate_post_for_tool(tool_slug, app=None):
     Returns:
         Dict with post data if successful, None otherwise
     """
+    _log_debug(f"Starting post generation for tool: {tool_slug}", "INFO")
+    
     tool = db.get_tool_by_slug(tool_slug)
     if not tool:
-        print(f"Tool not found: {tool_slug}")
+        _log_debug(f"Tool not found in database: {tool_slug}", "ERROR")
+        _log_debug(f"Available tools in config: {list(Config.AI_TOOLS.keys())}", "DEBUG")
         return None
     
     tool_config = Config.AI_TOOLS.get(tool_slug, {})
+    if not tool_config:
+        _log_debug(f"Tool '{tool_slug}' found in DB but not in Config.AI_TOOLS", "ERROR")
+        return None
+        
     provider = tool_config.get('provider', 'openai')
     model = tool_config.get('model', 'gpt-4o')
     style = tool_config.get('prompt_style', 'informative')
+    
+    _log_debug(f"Tool config - Provider: {provider}, Model: {model}", "DEBUG")
     
     # Get posts from the last 3 weeks to avoid repetition
     recent_posts = db.get_recent_posts_by_tool(tool['id'], days=21)
@@ -359,15 +556,32 @@ def generate_post_for_tool(tool_slug, app=None):
     try:
         # Generate content using the appropriate provider
         if provider == 'jasper':
-            response = generate_with_jasper(system_prompt, user_prompt)
+            result = generate_with_jasper(system_prompt, user_prompt)
         elif provider in PROVIDER_GENERATORS:
             generator = PROVIDER_GENERATORS[provider]
-            response = generator(model, system_prompt, user_prompt)
+            result = generator(model, system_prompt, user_prompt)
         else:
+            _log_debug(f"Unknown provider: {provider}", "ERROR")
+            _log_debug(f"Available providers: {list(PROVIDER_GENERATORS.keys())} + jasper", "DEBUG")
             raise Exception(f"Unknown provider: {provider}")
         
+        # Extract content and token usage from result
+        response_content = result['content']
+        input_tokens = result.get('input_tokens', 0)
+        output_tokens = result.get('output_tokens', 0)
+        
+        # Log successful API usage
+        db.log_api_usage(
+            tool_id=tool['id'],
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            success=True
+        )
+        
         # Parse the response
-        data = parse_ai_response(response, tool['id'])
+        data = parse_ai_response(response_content, tool['id'])
         
         if data:
             post_id = db.insert_post(
@@ -376,7 +590,11 @@ def generate_post_for_tool(tool_slug, app=None):
                 data['category'], 
                 data['tool_id']
             )
+            
+            # Calculate and display cost
+            cost = db.calculate_api_cost(provider, model, input_tokens, output_tokens)
             print(f"✅ Generated post by {tool['name']} ({provider}): {data['title']} [{data['category']}]")
+            print(f"   💰 Tokens: {input_tokens} in / {output_tokens} out | Est. cost: ${cost:.4f}")
             
             # Send email notifications to subscribers
             if app and post_id:
@@ -385,11 +603,22 @@ def generate_post_for_tool(tool_slug, app=None):
             
             return data
         else:
-            print(f"❌ Failed to parse response for {tool['name']}")
+            _log_debug(f"Failed to parse AI response for {tool['name']}", "ERROR")
+            _log_debug(f"Response preview (first 500 chars): {response_content[:500]}", "DEBUG")
             return None
             
     except Exception as e:
-        print(f"❌ Error generating post with {tool['name']} ({provider}): {e}")
+        # Log failed API usage
+        db.log_api_usage(
+            tool_id=tool['id'],
+            provider=provider,
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            success=False,
+            error_message=str(e)
+        )
+        _log_debug(f"Error generating post with {tool['name']} ({provider}): {e}", "ERROR")
         return None
 
 
@@ -408,12 +637,35 @@ def _send_post_notifications(app, post_data, tool):
 
 def generate_all_posts(app=None):
     """
-    Generate posts for all configured AI tools.
+    Generate posts for all configured AI tools that haven't posted in 7 days.
+    With 6 tools posting weekly, this results in roughly 1 post per day.
     Includes rate limiting between API calls.
     
     Args:
         app: Flask app instance for sending notifications (optional)
     """
+    from datetime import datetime, timedelta
+    
+    print("🔍 Checking which AI tools need to generate posts...")
+    
     for tool_slug in Config.AI_TOOLS.keys():
+        tool = db.get_tool_by_slug(tool_slug)
+        if not tool:
+            continue
+            
+        # Check when this tool last posted
+        last_post_date = db.get_last_post_date_for_tool(tool['id'])
+        
+        if last_post_date:
+            days_since_post = (datetime.now() - last_post_date).days
+            if days_since_post < 7:
+                print(f"⏭️ Skipping {tool['name']} - posted {days_since_post} days ago (next post in {7 - days_since_post} days)")
+                continue
+            print(f"📝 {tool['name']} last posted {days_since_post} days ago - generating new post...")
+        else:
+            print(f"📝 {tool['name']} has no posts yet - generating first post...")
+        
         generate_post_for_tool(tool_slug, app=app)
         time.sleep(2)  # Rate limiting between API calls
+    
+    print("✅ Post generation check complete")

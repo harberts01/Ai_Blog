@@ -63,6 +63,175 @@
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center">
               <div>
+                <h6 class="text-muted mb-1">API Requests</h6>
+                <h2 class="mb-0">{{ api_usage.totals.total_requests }}</h2>
+                <small class="text-muted">Last 30 days</small>
+              </div>
+              <div class="bg-info bg-opacity-10 rounded-3 p-3">
+                <i class="bi bi-cloud-arrow-up text-info fs-3"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="text-muted mb-1">Est. API Cost</h6>
+                <h2 class="mb-0">${{ "%.2f"|format(api_usage.totals.total_cost) }}</h2>
+                <small class="text-muted">Last 30 days</small>
+              </div>
+              <div class="bg-warning bg-opacity-10 rounded-3 p-3">
+                <i class="bi bi-currency-dollar text-warning fs-3"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Usage Section -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-white border-0">
+            <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>API Usage by Tool (Last 30 Days)</h5>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>AI Tool</th>
+                    <th class="text-center">Requests</th>
+                    <th class="text-end">Input Tokens</th>
+                    <th class="text-end">Output Tokens</th>
+                    <th class="text-end">Est. Cost</th>
+                    <th class="text-center">Errors</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for tool in api_usage.per_tool %}
+                  <tr>
+                    <td>
+                      {% if tool.slug == 'chatgpt' %}
+                      <i class="bi bi-robot text-chatgpt me-2"></i>
+                      {% elif tool.slug == 'claude' %}
+                      <i class="bi bi-robot text-claude me-2"></i>
+                      {% elif tool.slug == 'gemini' %}
+                      <i class="bi bi-robot text-gemini me-2"></i>
+                      {% elif tool.slug == 'grok' %}
+                      <i class="bi bi-robot text-grok me-2"></i>
+                      {% elif tool.slug == 'llama' %}
+                      <i class="bi bi-robot text-llama me-2"></i>
+                      {% elif tool.slug == 'jasper' %}
+                      <i class="bi bi-robot text-jasper me-2"></i>
+                      {% else %}
+                      <i class="bi bi-robot text-primary me-2"></i>
+                      {% endif %}
+                      {{ tool.name }}
+                    </td>
+                    <td class="text-center">
+                      <span class="badge bg-primary rounded-pill">{{ tool.requests }}</span>
+                    </td>
+                    <td class="text-end text-muted">{{ "{:,}".format(tool.input_tokens|int) }}</td>
+                    <td class="text-end text-muted">{{ "{:,}".format(tool.output_tokens|int) }}</td>
+                    <td class="text-end fw-semibold">${{ "%.4f"|format(tool.total_cost) }}</td>
+                    <td class="text-center">
+                      {% if tool.failed_requests > 0 %}
+                      <span class="badge bg-danger">{{ tool.failed_requests }}</span>
+                      {% else %}
+                      <span class="text-muted">-</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="6" class="text-center text-muted py-4">No API usage recorded yet</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                  <tr class="fw-bold">
+                    <td>Total</td>
+                    <td class="text-center">{{ api_usage.totals.total_requests }}</td>
+                    <td class="text-end">{{ "{:,}".format(api_usage.totals.total_input_tokens|int) }}</td>
+                    <td class="text-end">{{ "{:,}".format(api_usage.totals.total_output_tokens|int) }}</td>
+                    <td class="text-end">${{ "%.4f"|format(api_usage.totals.total_cost) }}</td>
+                    <td class="text-center">{{ api_usage.totals.failed_requests }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-white border-0">
+            <h5 class="mb-0"><i class="bi bi-piggy-bank me-2"></i>Budget Overview</h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-4">
+              <div class="d-flex justify-content-between mb-1">
+                <span class="text-muted">Monthly Spend</span>
+                <span class="fw-semibold">${{ "%.2f"|format(api_usage.totals.total_cost) }}</span>
+              </div>
+              <div class="progress" style="height: 8px;">
+                {% set budget = 10.00 %}
+                {% set percentage = (api_usage.totals.total_cost / budget * 100) if budget > 0 else 0 %}
+                {% set capped_percentage = percentage if percentage <= 100 else 100 %}
+                <div class="progress-bar {% if percentage > 80 %}bg-danger{% elif percentage > 50 %}bg-warning{% else %}bg-success{% endif %}" 
+                     role="progressbar" 
+                     style="width: {{ capped_percentage }}%">
+                </div>
+              </div>
+              <small class="text-muted">Est. budget: ${{ "%.2f"|format(budget) }}/month</small>
+            </div>
+            
+            <hr>
+            
+            <h6 class="text-muted mb-3">Monthly Projection</h6>
+            {% set days_elapsed = 30 %}
+            {% set daily_avg = api_usage.totals.total_cost / days_elapsed if days_elapsed > 0 else 0 %}
+            <div class="d-flex justify-content-between mb-2">
+              <span>Daily Average</span>
+              <span>${{ "%.4f"|format(daily_avg) }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+              <span>Projected Monthly</span>
+              <span class="fw-semibold">${{ "%.2f"|format(daily_avg * 30) }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Per Post (avg)</span>
+              <span>${{ "%.4f"|format(api_usage.totals.total_cost / api_usage.totals.total_requests) if api_usage.totals.total_requests > 0 else "0.00" }}</span>
+            </div>
+            
+            <hr>
+            
+            <h6 class="text-muted mb-3">Token Usage</h6>
+            <div class="d-flex justify-content-between mb-2">
+              <span>Total Input</span>
+              <span>{{ "{:,}".format(api_usage.totals.total_input_tokens|int) }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Total Output</span>
+              <span>{{ "{:,}".format(api_usage.totals.total_output_tokens|int) }}</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Second Stats Row -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
                 <h6 class="text-muted mb-1">Comments</h6>
                 <h2 class="mb-0">{{ stats.total_comments }}</h2>
                 <small class="text-success">+{{ stats.comments_this_week }} this week</small>
@@ -74,7 +243,7 @@
           </div>
         </div>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-6">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center">
@@ -112,7 +281,7 @@
                 <span>{{ tool.name }}</span>
                 <div>
                   <span class="badge bg-primary rounded-pill me-2">{{ tool.count }}</span>
-                  <form action="{{ url_for('admin_generate_single_post', tool_slug=tool.name|lower|replace(' ', '')|replace('(', '')|replace(')', '')) }}" method="POST" class="d-inline">
+                  <form action="{{ url_for('admin_generate_single_post', tool_slug=tool.slug) }}" method="POST" class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-link btn-sm p-0" title="Generate for {{ tool.name }}">
                       <i class="bi bi-plus-circle"></i>

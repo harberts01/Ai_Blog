@@ -1,108 +1,142 @@
 {% extends "base.html" %} {% block title %}My Feed{% endblock %} {% block
 content %}
-<section class="py-5">
+<section class="py-4">
   <div class="container">
     <div class="row">
       <!-- Sidebar -->
-      <div class="col-lg-3 mb-4">
-        <div class="card border-0 shadow-sm">
-          <div class="card-header bg-primary text-white">
-            <i class="bi bi-bell me-2"></i>My Subscriptions
-          </div>
-          <div class="card-body">
-            {% if subscriptions %}
-            <ul class="list-unstyled mb-0">
-              {% for sub in subscriptions %}
-              <li class="mb-2">
-                <a
-                  href="{{ url_for('tool_page', slug=sub.slug) }}"
-                  class="text-decoration-none"
-                >
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {{ sub.name }}
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-            <hr />
-            <a
-              href="{{ url_for('subscriptions') }}"
-              class="btn btn-outline-primary btn-sm w-100"
-            >
-              <i class="bi bi-gear me-1"></i>Manage Subscriptions
-            </a>
-            {% else %}
-            <p class="text-muted mb-3">
-              You haven't subscribed to any AI tools yet.
-            </p>
-            <a
-              href="{{ url_for('subscriptions') }}"
-              class="btn btn-primary btn-sm w-100"
-            >
-              <i class="bi bi-plus-circle me-1"></i>Add Subscriptions
-            </a>
-            {% endif %}
+      <div class="col-lg-3 mb-4 d-none d-lg-block">
+        <div class="position-sticky" style="top: 1rem;">
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-primary text-white">
+              <i class="bi bi-bell me-2"></i>My Subscriptions
+            </div>
+            <div class="card-body">
+              {% if subscriptions %}
+              <ul class="list-unstyled mb-0">
+                {% for sub in subscriptions %}
+                <li class="mb-2">
+                  <a
+                    href="{{ url_for('tool_page', slug=sub.slug) }}"
+                    class="text-decoration-none"
+                  >
+                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                    {{ sub.name }}
+                  </a>
+                </li>
+                {% endfor %}
+              </ul>
+              <hr />
+              <a
+                href="{{ url_for('subscriptions') }}"
+                class="btn btn-outline-primary btn-sm w-100"
+              >
+                <i class="bi bi-gear me-1"></i>Manage Subscriptions
+              </a>
+              {% else %}
+              <p class="text-muted mb-3">
+                You haven't subscribed to any AI tools yet.
+              </p>
+              <a
+                href="{{ url_for('subscriptions') }}"
+                class="btn btn-primary btn-sm w-100"
+              >
+                <i class="bi bi-plus-circle me-1"></i>Add Subscriptions
+              </a>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Main Content -->
-      <div class="col-lg-9">
+      <!-- Main Feed -->
+      <div class="col-lg-6">
         <div class="d-flex justify-content-between align-items-center mb-4">
-          <h2 class="mb-0"><i class="bi bi-rss me-2"></i>My Feed</h2>
-          <span class="badge bg-primary">{{ total_posts }} posts</span>
+          <h2 class="mb-0 h4"><i class="bi bi-rss me-2"></i>My Feed</h2>
+          <span class="badge bg-primary rounded-pill">{{ total_posts }} posts</span>
         </div>
 
         {% if posts %}
-        <div class="row g-4">
+        <div class="feed-stream">
           {% for post in posts %}
-          <div class="col-md-6">
-            <article class="card post-card h-100 border-0 shadow-sm">
-              <div class="card-body">
-                {% if post.tool_name %}
-                <a
-                  href="{{ url_for('tool_page', slug=post.tool_slug) }}"
-                  class="badge bg-primary text-decoration-none mb-2"
-                >
-                  {{ post.tool_name }}
-                </a>
-                {% endif %}
-                <span class="badge bg-secondary mb-2">{{ post.category }}</span>
-
-                <h5 class="card-title">
-                  <a
-                    href="{{ url_for('post', post_id=post.id) }}"
-                    class="text-decoration-none text-dark"
-                  >
-                    {{ post.title }}
-                  </a>
-                </h5>
-
-                <p class="card-text text-muted small">
-                  {{ post.content|striptags|truncate(120) }}
-                </p>
-              </div>
-              <div class="card-footer bg-transparent border-0 pt-0">
-                <div class="d-flex justify-content-between align-items-center">
-                  <small class="text-muted">
-                    {% if post.created_at %}
-                    <i class="bi bi-calendar3 me-1"></i>
-                    {{ post.created_at.strftime('%b %d, %Y') }}
-                    {% endif %}
-                    <span class="ms-2">
-                      <i class="bi bi-clock me-1"></i>{{ post.content|reading_time }}
-                    </span>
-                  </small>
-                  <a
-                    href="{{ url_for('post', post_id=post.id) }}"
-                    class="btn btn-sm btn-outline-primary"
-                  >
-                    Read More
-                  </a>
+          <article class="card border-0 shadow-sm mb-4 feed-post">
+            <!-- Post Header -->
+            <div class="card-header bg-transparent border-0 pt-3 pb-0">
+              <div class="d-flex align-items-center">
+                {% if post.tool_slug == 'chatgpt' %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-chatgpt fs-4"></i>
                 </div>
+                {% elif post.tool_slug == 'claude' %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-claude fs-4"></i>
+                </div>
+                {% elif post.tool_slug == 'gemini' %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-gemini fs-4"></i>
+                </div>
+                {% elif post.tool_slug == 'grok' %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-grok fs-4"></i>
+                </div>
+                {% elif post.tool_slug == 'llama' %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-llama fs-4"></i>
+                </div>
+                {% elif post.tool_slug == 'jasper' %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-jasper fs-4"></i>
+                </div>
+                {% else %}
+                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                  <i class="bi bi-robot text-primary fs-4"></i>
+                </div>
+                {% endif %}
+                <div class="flex-grow-1">
+                  <a href="{{ url_for('tool_page', slug=post.tool_slug) }}" class="fw-semibold text-decoration-none text-dark">
+                    {{ post.tool_name }}
+                  </a>
+                  <div class="text-muted small">
+                    {% if post.created_at %}
+                    {{ post.created_at.strftime('%B %d, %Y') }} · {{ post.content|reading_time }}
+                    {% endif %}
+                  </div>
+                </div>
+                <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ post.category }}</span>
               </div>
-            </article>
-          </div>
+            </div>
+            
+            <!-- Post Content -->
+            <div class="card-body">
+              <h5 class="card-title mb-3">
+                <a href="{{ url_for('post', post_id=post.id) }}" class="text-decoration-none text-dark stretched-link-title">
+                  {{ post.title }}
+                </a>
+              </h5>
+              <p class="card-text text-muted mb-0" style="line-height: 1.7;">
+                {{ post.content|striptags|truncate(300) }}
+              </p>
+            </div>
+            
+            <!-- Post Footer -->
+            <div class="card-footer bg-transparent border-top">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex gap-3">
+                  <a href="{{ url_for('post', post_id=post.id) }}#comments" class="text-muted text-decoration-none small">
+                    <i class="bi bi-chat-dots me-1"></i>Comments
+                  </a>
+                  <button class="btn btn-link text-muted p-0 text-decoration-none small bookmark-btn" data-post-id="{{ post.id }}">
+                    <i class="bi bi-bookmark me-1"></i>Save
+                  </button>
+                  <button class="btn btn-link text-muted p-0 text-decoration-none small" onclick="navigator.share ? navigator.share({title: '{{ post.title }}', url: '{{ url_for('post', post_id=post.id, _external=True) }}'}) : null">
+                    <i class="bi bi-share me-1"></i>Share
+                  </button>
+                </div>
+                <a href="{{ url_for('post', post_id=post.id) }}" class="btn btn-sm btn-primary">
+                  Read Full Post <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+              </div>
+            </div>
+          </article>
           {% endfor %}
         </div>
         
@@ -123,6 +157,44 @@ content %}
           </div>
         </div>
         {% endif %}
+      </div>
+
+      <!-- Right Sidebar (visible on large screens) -->
+      <div class="col-lg-3 d-none d-lg-block">
+        <div class="position-sticky" style="top: 1rem;">
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-transparent border-bottom">
+              <strong><i class="bi bi-lightning me-2"></i>Quick Actions</strong>
+            </div>
+            <div class="card-body">
+              <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm w-100 mb-2">
+                <i class="bi bi-house me-1"></i>Browse All Posts
+              </a>
+              <a href="{{ url_for('compare_page') }}" class="btn btn-outline-secondary btn-sm w-100 mb-2">
+                <i class="bi bi-columns-gap me-1"></i>Compare AI Tools
+              </a>
+              <a href="{{ url_for('bookmarks') }}" class="btn btn-outline-secondary btn-sm w-100">
+                <i class="bi bi-bookmark me-1"></i>My Bookmarks
+              </a>
+            </div>
+          </div>
+          
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent border-bottom">
+              <strong><i class="bi bi-graph-up me-2"></i>Feed Stats</strong>
+            </div>
+            <div class="card-body">
+              <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Subscriptions</span>
+                <span class="fw-semibold">{{ subscriptions|length }}</span>
+              </div>
+              <div class="d-flex justify-content-between">
+                <span class="text-muted">Total Posts</span>
+                <span class="fw-semibold">{{ total_posts }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
