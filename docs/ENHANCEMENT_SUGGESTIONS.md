@@ -18,6 +18,12 @@ This document outlines potential improvements for the AI Blog platform across de
 - ✅ **Full-Text Search** - PostgreSQL tsvector search with search bar in navbar and dedicated results page
 - ✅ **Reading Time** - Estimated reading time displayed on all post cards and post pages
 - ✅ **Reading Progress** - Visual progress bar at top of post pages showing scroll progress
+- ✅ **Bookmark System** - Users can save posts to read later, accessible via user dropdown
+- ✅ **Comment Threading** - Nested replies to comments with visual indentation (up to 3 levels deep)
+- ✅ **Email Notifications** - Subscribers receive email updates when new posts are published (with opt-in/out preference)
+- ✅ **Admin Dashboard** - Comprehensive admin panel with statistics, user management, comment moderation, and manual post generation
+- ✅ **REST API** - Full API with endpoints for tools, posts, categories, stats with pagination support
+- ✅ **AI Comparison** - Side-by-side AI writing comparison with style metrics and user voting
 
 ---
 
@@ -76,10 +82,10 @@ Current: only 8 characters minimum. Add:
 - Search suggestions/autocomplete
 
 ### 2. User Engagement
-- **Like/Bookmark posts** - Save favorites for later
-- **Share buttons** - Social media integration
-- **Email notifications** - Notify subscribers of new posts from their tools
-- **Comment threading** - Allow replies to comments
+- ~~**Like/Bookmark posts** - Save favorites for later~~ ✅ Implemented (Bookmarks)
+- **Share buttons** - Social media integration (basic share buttons exist on post page)
+- ~~**Email notifications** - Notify subscribers of new posts from their tools~~ ✅ Implemented (with preference toggle)
+- ~~**Comment threading** - Allow replies to comments~~ ✅ Implemented (nested replies with depth limit)
 
 ### 3. Content Discovery
 - **Related posts** - "You might also like" section
@@ -88,18 +94,18 @@ Current: only 8 characters minimum. Add:
 - **RSS feeds** - Per-tool and global feeds
 
 ### 4. AI Comparison Features
-- **Side-by-side comparisons** - Same prompt, different AIs
-- **AI writing style analysis** - Show metrics about each AI's style
-- **User voting** - "Which AI wrote it better?"
+- ~~**Side-by-side comparisons** - Same prompt, different AIs~~ ✅ Implemented (compare by category)
+- ~~**AI writing style analysis** - Show metrics about each AI's style~~ ✅ Implemented (word count, reading level, vocabulary)
+- ~~**User voting** - "Which AI wrote it better?"~~ ✅ Implemented (voting with results)
 
 ### 5. Admin Dashboard
-- View posting statistics and trends
-- Manually trigger content generation
-- Moderate comments (spam detection exists but no UI)
-- User management panel
+- ~~View posting statistics and trends~~ ✅ Implemented
+- ~~Manually trigger content generation~~ ✅ Implemented
+- ~~Moderate comments (spam detection exists but no UI)~~ ✅ Implemented
+- ~~User management panel~~ ✅ Implemented
 
 ### 6. API Endpoints
-- REST API for posts (`/api/posts`, `/api/tools`)
+- ~~REST API for posts (`/api/posts`, `/api/tools`)~~ ✅ Implemented (full CRUD API with pagination)
 - Webhook support for external integrations
 - API key authentication for third-party access
 
@@ -118,7 +124,7 @@ Current: only 8 characters minimum. Add:
 | ~~Reading time estimate~~ | ~~Low~~ | ~~Medium~~ | ✅ Done |
 | ~~Pagination~~ | ~~Medium~~ | ~~High~~ | ✅ Done |
 | ~~Full-text search~~ | ~~Medium~~ | ~~High~~ | ✅ Done |
-| Like/bookmark posts | Medium | Medium |
+| ~~Like/bookmark posts~~ | ~~Medium~~ | ~~Medium~~ | ✅ Done |
 
 ---
 
@@ -129,12 +135,12 @@ Current: only 8 characters minimum. Add:
 2. ~~Search functionality~~ ✅
 3. ~~Reading time & progress indicators~~ ✅
 
-### Phase 2: User Engagement (Next)
-1. Like/bookmark system
-2. Comment improvements
-3. Email notifications
+### Phase 2: User Engagement ✅ COMPLETE
+1. ~~Like/bookmark system~~ ✅
+2. ~~Comment improvements~~ ✅ (threading)
+3. ~~Email notifications~~ ✅
 
-### Phase 3: Advanced Features
-1. Admin dashboard
-2. API endpoints
-3. AI comparison features
+### Phase 3: Advanced Features ✅ COMPLETE
+1. ~~Admin dashboard~~ ✅
+2. ~~API endpoints~~ ✅
+3. ~~AI comparison features~~ ✅

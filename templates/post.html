@@ -51,6 +51,27 @@ block content %}
             <span class="mx-2">•</span>
             <i class="bi bi-robot me-1"></i>
             AI Generated
+            
+            <!-- Bookmark Button -->
+            {% if current_user %}
+            <span class="ms-3">
+              {% if is_bookmarked %}
+              <form action="{{ url_for('unbookmark_post', post_id=post.id) }}" method="POST" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-sm btn-warning" title="Remove bookmark">
+                  <i class="bi bi-bookmark-fill me-1"></i>Bookmarked
+                </button>
+              </form>
+              {% else %}
+              <form action="{{ url_for('bookmark_post', post_id=post.id) }}" method="POST" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-sm btn-outline-warning" title="Bookmark this post">
+                  <i class="bi bi-bookmark me-1"></i>Bookmark
+                </button>
+              </form>
+              {% endif %}
+            </span>
+            {% endif %}
           </div>
         </header>
 
@@ -92,13 +113,19 @@ block content %}
         <!-- Comments Section -->
         <section class="comments-section mt-5">
           <h3 class="mb-4">
-            <i class="bi bi-chat-dots me-2"></i>Comments ({{ comments|length }})
+            <i class="bi bi-chat-dots me-2"></i>Comments
           </h3>
 
           <!-- Comment Form -->
           <div class="card border-0 shadow-sm mb-4">
             <div class="card-body">
-              <h5 class="card-title mb-3">Leave a Comment</h5>
+              <h5 class="card-title mb-3">
+                {% if current_user %}
+                  Comment as <strong>{{ current_user.username }}</strong>
+                {% else %}
+                  Leave a Comment
+                {% endif %}
+              </h5>
               <form
                 action="{{ url_for('add_comment', post_id=post.id) }}"
                 method="POST"
@@ -124,35 +151,10 @@ block content %}
 
           <!-- Comments List -->
           {% if comments %}
+          {% from 'components/comment.html' import render_comment %}
           <div class="comments-list">
             {% for comment in comments %}
-            <div class="card border-0 shadow-sm mb-3">
-              <div class="card-body">
-                <div
-                  class="d-flex justify-content-between align-items-start mb-2"
-                >
-                  <div class="d-flex align-items-center">
-                    <div
-                      class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3"
-                      style="width: 40px; height: 40px"
-                    >
-                      <i class="bi bi-person"></i>
-                    </div>
-                    <div>
-                      <span class="fw-semibold">Anonymous</span>
-                      {% if comment.created_at %}
-                      <br />
-                      <small class="text-muted"
-                        >{{ comment.created_at.strftime('%b %d, %Y at %I:%M %p')
-                        }}</small
-                      >
-                      {% endif %}
-                    </div>
-                  </div>
-                </div>
-                <p class="mb-0">{{ comment.content }}</p>
-              </div>
-            </div>
+            {{ render_comment(comment, post.id) }}
             {% endfor %}
           </div>
           {% else %}
@@ -191,6 +193,20 @@ block content %}
         progressBar.style.width = progress + '%';
       });
     }
+    
+    // Reply button toggle functionality
+    document.querySelectorAll('.reply-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const commentId = this.dataset.commentId;
+        const replyForm = document.getElementById('reply-form-' + commentId);
+        if (replyForm) {
+          replyForm.style.display = replyForm.style.display === 'none' ? 'block' : 'none';
+          if (replyForm.style.display === 'block') {
+            replyForm.querySelector('textarea').focus();
+          }
+        }
+      });
+    });
   });
 </script>
 {% endblock %}

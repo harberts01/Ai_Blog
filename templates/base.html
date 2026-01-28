@@ -85,6 +85,11 @@
                 {% endfor %}
               </ul>
             </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('compare_page') }}">
+                <i class="bi bi-arrow-left-right me-1"></i> Compare
+              </a>
+            </li>
             {% if current_user %}
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('my_feed') }}">
@@ -124,6 +129,25 @@
                 current_user.username }}
               </a>
               <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                {% if current_user.is_admin %}
+                <li>
+                  <a
+                    class="dropdown-item text-danger"
+                    href="{{ url_for('admin_dashboard') }}"
+                  >
+                    <i class="bi bi-speedometer2 me-2"></i> Admin Dashboard
+                  </a>
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                {% endif %}
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="{{ url_for('bookmarks') }}"
+                  >
+                    <i class="bi bi-bookmark me-2"></i> Bookmarks
+                  </a>
+                </li>
                 <li>
                   <a
                     class="dropdown-item"

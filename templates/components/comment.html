@@ -1,0 +1,51 @@
+{# Recursive macro for displaying threaded comments #}
+{% macro render_comment(comment, post_id, depth=0) %}
+<div class="comment-item mb-3 {% if depth > 0 %}ms-4 border-start ps-3{% endif %}" id="comment-{{ comment.id }}">
+  <div class="card border-0 {% if depth == 0 %}shadow-sm{% else %}bg-light{% endif %}">
+    <div class="card-body py-3">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div class="d-flex align-items-center">
+          <div class="bg-{% if comment.user_id %}primary{% else %}secondary{% endif %} text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.8rem;">
+            <i class="bi bi-person"></i>
+          </div>
+          <div>
+            <span class="fw-semibold">{{ comment.username }}</span>
+            {% if comment.created_at %}
+            <small class="text-muted ms-2">{{ comment.created_at.strftime('%b %d, %Y at %I:%M %p') }}</small>
+            {% endif %}
+          </div>
+        </div>
+        {% if depth < 3 %}
+        <button class="btn btn-sm btn-link text-muted reply-btn" data-comment-id="{{ comment.id }}" title="Reply">
+          <i class="bi bi-reply"></i> Reply
+        </button>
+        {% endif %}
+      </div>
+      <p class="mb-2">{{ comment.content }}</p>
+      
+      {# Reply form (hidden by default) #}
+      <div class="reply-form" id="reply-form-{{ comment.id }}" style="display: none;">
+        <form action="{{ url_for('add_comment', post_id=post_id) }}" method="POST" class="mt-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="parent_id" value="{{ comment.id }}"/>
+          <div class="input-group">
+            <textarea name="content" class="form-control form-control-sm" rows="2" placeholder="Write a reply..." required minlength="3" maxlength="1000"></textarea>
+            <button type="submit" class="btn btn-primary btn-sm">
+              <i class="bi bi-send"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  {# Render replies recursively #}
+  {% if comment.replies %}
+  <div class="replies mt-2">
+    {% for reply in comment.replies %}
+    {{ render_comment(reply, post_id, depth + 1) }}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

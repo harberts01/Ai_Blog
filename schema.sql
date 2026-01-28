@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS Users (
     password_hash VARCHAR(255) NOT NULL,
     username VARCHAR(100) NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
+    is_admin BOOLEAN DEFAULT FALSE,
+    email_notifications BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -49,9 +51,43 @@ CREATE TABLE IF NOT EXISTS Subscription (
 CREATE TABLE IF NOT EXISTS Comment (
     commentid SERIAL PRIMARY KEY,
     postid INTEGER NOT NULL REFERENCES Post(postid) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES Users(user_id) ON DELETE SET NULL,
+    parent_id INTEGER REFERENCES Comment(commentid) ON DELETE CASCADE,
     content TEXT NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_spam BOOLEAN DEFAULT FALSE
+);
+
+-- ============== Bookmarks Table ==============
+CREATE TABLE IF NOT EXISTS Bookmark (
+    bookmark_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,
+    post_id INTEGER NOT NULL REFERENCES Post(postid) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, post_id)
+);
+
+-- ============== AI Comparison Tables ==============
+CREATE TABLE IF NOT EXISTS Comparison (
+    comparison_id SERIAL PRIMARY KEY,
+    topic VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ComparisonPost (
+    id SERIAL PRIMARY KEY,
+    comparison_id INTEGER NOT NULL REFERENCES Comparison(comparison_id) ON DELETE CASCADE,
+    post_id INTEGER NOT NULL REFERENCES Post(postid) ON DELETE CASCADE,
+    UNIQUE(comparison_id, post_id)
+);
+
+CREATE TABLE IF NOT EXISTS Vote (
+    vote_id SERIAL PRIMARY KEY,
+    comparison_id INTEGER NOT NULL REFERENCES Comparison(comparison_id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES Users(user_id) ON DELETE SET NULL,
+    post_id INTEGER NOT NULL REFERENCES Post(postid) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(comparison_id, user_id)
 );
 
 -- ============== Indexes for Performance ==============

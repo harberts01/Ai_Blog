@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="py-5 bg-light">
+  <div class="container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h1 class="h2 mb-1">
+          <i class="bi bi-speedometer2 me-2"></i>Admin Dashboard
+        </h1>
+        <p class="text-muted mb-0">Overview of your AI Blog platform</p>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-primary">
+          <i class="bi bi-people me-1"></i>Users
+        </a>
+        <a href="{{ url_for('admin_comments') }}" class="btn btn-outline-warning">
+          <i class="bi bi-chat-dots me-1"></i>Comments
+          {% if stats.spam_comments > 0 %}
+          <span class="badge bg-danger">{{ stats.spam_comments }}</span>
+          {% endif %}
+        </a>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="text-muted mb-1">Total Posts</h6>
+                <h2 class="mb-0">{{ stats.total_posts }}</h2>
+                <small class="text-success">+{{ stats.posts_this_week }} this week</small>
+              </div>
+              <div class="bg-primary bg-opacity-10 rounded-3 p-3">
+                <i class="bi bi-file-text text-primary fs-3"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="text-muted mb-1">Total Users</h6>
+                <h2 class="mb-0">{{ stats.total_users }}</h2>
+                <small class="text-success">+{{ stats.new_users_this_week }} this week</small>
+              </div>
+              <div class="bg-success bg-opacity-10 rounded-3 p-3">
+                <i class="bi bi-people text-success fs-3"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="text-muted mb-1">Comments</h6>
+                <h2 class="mb-0">{{ stats.total_comments }}</h2>
+                <small class="text-success">+{{ stats.comments_this_week }} this week</small>
+              </div>
+              <div class="bg-info bg-opacity-10 rounded-3 p-3">
+                <i class="bi bi-chat-dots text-info fs-3"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="text-muted mb-1">Subscriptions</h6>
+                <h2 class="mb-0">{{ stats.total_subscriptions }}</h2>
+                <small class="text-muted">{{ stats.total_bookmarks }} bookmarks</small>
+              </div>
+              <div class="bg-warning bg-opacity-10 rounded-3 p-3">
+                <i class="bi bi-bell text-warning fs-3"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <!-- Posts Per Tool -->
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Posts by AI Tool</h5>
+            <form action="{{ url_for('admin_generate_posts') }}" method="POST" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <button type="submit" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-lightning me-1"></i>Generate All
+              </button>
+            </form>
+          </div>
+          <div class="card-body">
+            <div class="list-group list-group-flush">
+              {% for tool in stats.posts_per_tool %}
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                <span>{{ tool.name }}</span>
+                <div>
+                  <span class="badge bg-primary rounded-pill me-2">{{ tool.count }}</span>
+                  <form action="{{ url_for('admin_generate_single_post', tool_slug=tool.name|lower|replace(' ', '')|replace('(', '')|replace(')', '')) }}" method="POST" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-link btn-sm p-0" title="Generate for {{ tool.name }}">
+                      <i class="bi bi-plus-circle"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Posts -->
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-white border-0">
+            <h5 class="mb-0">Recent Posts</h5>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Tool</th>
+                    <th>Date</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for post in stats.recent_posts %}
+                  <tr>
+                    <td class="text-truncate" style="max-width: 200px;">{{ post.title }}</td>
+                    <td><span class="badge bg-secondary">{{ post.category }}</span></td>
+                    <td>{{ post.tool_name or 'N/A' }}</td>
+                    <td class="text-muted small">{{ post.created_at.strftime('%b %d, %Y') }}</td>
+                    <td>
+                      <a href="{{ url_for('post', post_id=post.id) }}" class="btn btn-sm btn-link">
+                        <i class="bi bi-eye"></i>
+                      </a>
+                    </td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-4">No posts yet</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Users -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Recent Users</h5>
+            <a href="{{ url_for('admin_users') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for user in stats.recent_users %}
+                  <tr>
+                    <td>
+                      <i class="bi bi-person-circle me-2"></i>{{ user.username }}
+                    </td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                      {% if user.is_admin %}
+                      <span class="badge bg-danger">Admin</span>
+                      {% else %}
+                      <span class="badge bg-secondary">User</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-muted small">{{ user.created_at.strftime('%b %d, %Y') }}</td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="4" class="text-center text-muted py-4">No users yet</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Spam Alert -->
+    {% if stats.spam_comments > 0 %}
+    <div class="alert alert-warning mt-4 d-flex align-items-center" role="alert">
+      <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
+      <div>
+        <strong>{{ stats.spam_comments }} spam comment{% if stats.spam_comments != 1 %}s{% endif %}</strong> pending review.
+        <a href="{{ url_for('admin_comments') }}" class="alert-link">Review now</a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

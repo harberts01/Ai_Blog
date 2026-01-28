@@ -318,12 +318,13 @@ def parse_ai_response(response, tool_id):
     return None
 
 
-def generate_post_for_tool(tool_slug):
+def generate_post_for_tool(tool_slug, app=None):
     """
     Generate a blog post using a specific AI tool's native API.
     
     Args:
         tool_slug: The slug identifier for the AI tool
+        app: Flask app instance for sending notifications (optional)
         
     Returns:
         Dict with post data if successful, None otherwise
@@ -369,13 +370,19 @@ def generate_post_for_tool(tool_slug):
         data = parse_ai_response(response, tool['id'])
         
         if data:
-            db.insert_post(
+            post_id = db.insert_post(
                 data['title'], 
                 data['content'], 
                 data['category'], 
                 data['tool_id']
             )
             print(f"✅ Generated post by {tool['name']} ({provider}): {data['title']} [{data['category']}]")
+            
+            # Send email notifications to subscribers
+            if app and post_id:
+                data['id'] = post_id
+                _send_post_notifications(app, data, tool)
+            
             return data
         else:
             print(f"❌ Failed to parse response for {tool['name']}")
@@ -386,11 +393,27 @@ def generate_post_for_tool(tool_slug):
         return None
 
 
-def generate_all_posts():
+def _send_post_notifications(app, post_data, tool):
+    """Send email notifications to tool subscribers"""
+    try:
+        from email_utils import send_new_post_notification
+        
+        subscribers = db.get_subscriber_emails_by_tool(tool['id'])
+        if subscribers:
+            send_new_post_notification(app, post_data, tool['name'], subscribers)
+            print(f"📧 Notification queued for {len(subscribers)} subscribers")
+    except Exception as e:
+        print(f"⚠️ Failed to send notifications: {e}")
+
+
+def generate_all_posts(app=None):
     """
     Generate posts for all configured AI tools.
     Includes rate limiting between API calls.
+    
+    Args:
+        app: Flask app instance for sending notifications (optional)
     """
     for tool_slug in Config.AI_TOOLS.keys():
-        generate_post_for_tool(tool_slug)
+        generate_post_for_tool(tool_slug, app=app)
         time.sleep(2)  # Rate limiting between API calls

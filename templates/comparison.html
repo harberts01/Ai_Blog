@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ comparison.topic }} - AI Comparison{% endblock %}
+{% block content %}
+<section class="py-5 bg-light">
+  <div class="container">
+    <!-- Header -->
+    <div class="text-center mb-4">
+      <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb justify-content-center">
+          <li class="breadcrumb-item"><a href="{{ url_for('compare_page') }}">Compare</a></li>
+          <li class="breadcrumb-item active">{{ comparison.topic }}</li>
+        </ol>
+      </nav>
+      <h1 class="h2">
+        <i class="bi bi-arrow-left-right me-2"></i>{{ comparison.topic }}
+      </h1>
+      <p class="text-muted">
+        {{ comparison.posts|length }} AI tools compared • {{ total_votes }} vote{% if total_votes != 1 %}s{% endif %}
+      </p>
+    </div>
+
+    <!-- Voting Results Summary -->
+    {% if total_votes > 0 %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-trophy me-2"></i>Current Results</h5>
+        <div class="row g-3">
+          {% for post in comparison.posts|sort(attribute='votes', reverse=True) %}
+          <div class="col">
+            <div class="d-flex align-items-center">
+              <div class="me-3">
+                {% if loop.index == 1 %}
+                <span class="badge bg-warning text-dark fs-6"><i class="bi bi-trophy"></i></span>
+                {% else %}
+                <span class="badge bg-secondary">{{ loop.index }}</span>
+                {% endif %}
+              </div>
+              <div class="flex-grow-1">
+                <div class="d-flex justify-content-between mb-1">
+                  <strong>{{ post.tool_name }}</strong>
+                  <span>{{ post.votes }} vote{% if post.votes != 1 %}s{% endif %} ({{ post.vote_percentage|round(1) }}%)</span>
+                </div>
+                <div class="progress" style="height: 8px;">
+                  <div class="progress-bar {% if loop.index == 1 %}bg-warning{% else %}bg-primary{% endif %}" 
+                       style="width: {{ post.vote_percentage }}%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Side by Side Comparison -->
+    <div class="row g-4">
+      {% for post in comparison.posts %}
+      <div class="col-lg-{{ 12 // comparison.posts|length }}">
+        <div class="card border-0 shadow-sm h-100 {% if user_vote == post.id %}border-primary border-2{% endif %}">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="mb-0">{{ post.tool_name }}</h5>
+              {% if user_vote == post.id %}
+              <span class="badge bg-success"><i class="bi bi-check me-1"></i>Your Vote</span>
+              {% endif %}
+            </div>
+            {% if current_user %}
+            <form action="{{ url_for('vote_comparison', comparison_id=comparison.id, post_id=post.id) }}" method="POST">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <button type="submit" class="btn btn-{% if user_vote == post.id %}success{% else %}outline-primary{% endif %} btn-sm">
+                <i class="bi bi-hand-thumbs-up me-1"></i>
+                {% if user_vote == post.id %}Voted{% else %}Vote{% endif %}
+              </button>
+            </form>
+            {% endif %}
+          </div>
+          
+          <!-- Style Metrics -->
+          <div class="card-body border-bottom bg-light py-2">
+            <div class="row text-center small">
+              <div class="col" title="Word Count">
+                <strong>{{ post.metrics.word_count }}</strong>
+                <br><span class="text-muted">Words</span>
+              </div>
+              <div class="col" title="Average words per sentence">
+                <strong>{{ post.metrics.avg_words_per_sentence }}</strong>
+                <br><span class="text-muted">Words/Sent</span>
+              </div>
+              <div class="col" title="Vocabulary richness (unique words %)">
+                <strong>{{ post.metrics.vocab_richness }}%</strong>
+                <br><span class="text-muted">Vocab</span>
+              </div>
+              <div class="col" title="Reading Level (Grade)">
+                <strong>{{ post.metrics.reading_level }}</strong>
+                <br><span class="text-muted">Grade</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Post Title -->
+          <div class="card-body border-bottom">
+            <h6 class="card-title">
+              <a href="{{ url_for('post', post_id=post.id) }}" class="text-decoration-none">
+                {{ post.title }}
+              </a>
+            </h6>
+            <span class="badge bg-secondary">{{ post.category }}</span>
+          </div>
+          
+          <!-- Post Content Preview -->
+          <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+            <div class="post-content-preview">
+              {{ post.content|safe }}
+            </div>
+          </div>
+          
+          <div class="card-footer bg-white">
+            <a href="{{ url_for('post', post_id=post.id) }}" class="btn btn-outline-secondary btn-sm w-100">
+              <i class="bi bi-eye me-1"></i>Read Full Post
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Login Prompt -->
+    {% if not current_user %}
+    <div class="alert alert-info text-center mt-4">
+      <i class="bi bi-info-circle me-2"></i>
+      <a href="{{ url_for('login') }}">Log in</a> to vote for your favorite AI writer!
+    </div>
+    {% endif %}
+
+    <!-- Back Link -->
+    <div class="text-center mt-4">
+      <a href="{{ url_for('compare_page') }}" class="btn btn-outline-primary">
+        <i class="bi bi-arrow-left me-1"></i>Compare More
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .post-content-preview {
+    font-size: 0.9rem;
+  }
+  .post-content-preview h1, 
+  .post-content-preview h2, 
+  .post-content-preview h3 {
+    font-size: 1.1rem;
+    margin-top: 1rem;
+  }
+  .post-content-preview img {
+    max-width: 100%;
+    height: auto;
+  }
+</style>
+{% endblock %}

@@ -11,6 +11,39 @@ block content %}
           Choose which AI tools you want to follow. Posts from subscribed tools
           will appear in your feed.
         </p>
+        
+        <!-- Email Notification Preferences -->
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-body">
+            <h5 class="card-title">
+              <i class="bi bi-envelope me-2"></i>Email Notifications
+            </h5>
+            <p class="card-text text-muted small mb-3">
+              Receive email updates when new posts are published from your subscribed tools.
+            </p>
+            <form action="{{ url_for('update_email_preferences') }}" method="POST" class="d-flex align-items-center gap-3">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="form-check form-switch">
+                <input 
+                  class="form-check-input" 
+                  type="checkbox" 
+                  id="emailNotifications" 
+                  name="email_notifications"
+                  {% if current_user.email_notifications %}checked{% endif %}
+                  onchange="this.form.submit()"
+                  style="width: 3em; height: 1.5em; cursor: pointer;"
+                >
+                <label class="form-check-label ms-2" for="emailNotifications">
+                  {% if current_user.email_notifications %}
+                  <span class="text-success"><i class="bi bi-check-circle me-1"></i>Enabled</span>
+                  {% else %}
+                  <span class="text-muted"><i class="bi bi-x-circle me-1"></i>Disabled</span>
+                  {% endif %}
+                </label>
+              </div>
+            </form>
+          </div>
+        </div>
 
         <div class="row g-4">
           {% for tool in tools %}

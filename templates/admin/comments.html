@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Comment Moderation - Admin{% endblock %}
+{% block content %}
+<div class="py-5 bg-light">
+  <div class="container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+            <li class="breadcrumb-item active">Comments</li>
+          </ol>
+        </nav>
+        <h1 class="h2 mb-0">
+          <i class="bi bi-chat-dots me-2"></i>Comment Moderation
+        </h1>
+      </div>
+      <div>
+        {% if total_comments > 0 %}
+        <span class="badge bg-warning fs-6">{{ total_comments }} spam comment{% if total_comments != 1 %}s{% endif %}</span>
+        {% else %}
+        <span class="badge bg-success fs-6">No spam comments</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if comments %}
+    <!-- Comments List -->
+    <div class="row g-3">
+      {% for comment in comments %}
+      <div class="col-12">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center mb-2">
+                  <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">
+                    <i class="bi bi-person"></i>
+                  </div>
+                  <div>
+                    <strong>{{ comment.username }}</strong>
+                    <small class="text-muted ms-2">{{ comment.created_at.strftime('%b %d, %Y at %I:%M %p') }}</small>
+                  </div>
+                </div>
+                
+                <div class="bg-light rounded p-3 mb-2">
+                  <p class="mb-0">{{ comment.content }}</p>
+                </div>
+                
+                <small class="text-muted">
+                  On post: <a href="{{ url_for('post', post_id=comment.post_id) }}" target="_blank">{{ comment.post_title }}</a>
+                </small>
+              </div>
+              
+              <div class="ms-3 d-flex gap-2">
+                <form action="{{ url_for('admin_approve_comment', comment_id=comment.id) }}" method="POST">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                  <button type="submit" class="btn btn-success btn-sm" title="Approve - Not Spam">
+                    <i class="bi bi-check-lg me-1"></i>Approve
+                  </button>
+                </form>
+                <form action="{{ url_for('admin_delete_comment', comment_id=comment.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this comment?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                  <button type="submit" class="btn btn-danger btn-sm" title="Delete">
+                    <i class="bi bi-trash me-1"></i>Delete
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav aria-label="Comment pagination" class="mt-4">
+      <ul class="pagination justify-content-center mb-0">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin_comments', page=page-1) }}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+        {% for p in range(1, total_pages + 1) %}
+          {% if p == page %}
+          <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+          {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+          <li class="page-item"><a class="page-link" href="{{ url_for('admin_comments', page=p) }}">{{ p }}</a></li>
+          {% elif p == page - 3 or p == page + 3 %}
+          <li class="page-item disabled"><span class="page-link">...</span></li>
+          {% endif %}
+        {% endfor %}
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin_comments', page=page+1) }}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-body text-center py-5">
+        <i class="bi bi-check-circle display-1 text-success mb-3"></i>
+        <h4>All Clear!</h4>
+        <p class="text-muted mb-0">No spam comments to review. Great job keeping the community clean!</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

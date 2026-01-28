@@ -27,7 +27,7 @@ from flask_limiter.util import get_remote_address
 
 from config import Config
 import database as db
-from auth import login_required, get_current_user, login_user, logout_user
+from auth import login_required, admin_required, get_current_user, login_user, logout_user
 from utils import sanitize_input, validate_email
 import ai_generators
 
@@ -186,7 +186,14 @@ def post(post_id):
         abort(404)
     
     comments = db.get_comments_by_post(post_id)
-    return render_template("post.html", post=post_data, comments=comments)
+    
+    # Check if user has bookmarked this post
+    is_bookmarked = False
+    user = get_current_user()
+    if user:
+        is_bookmarked = db.is_bookmarked(user['id'], post_id)
+    
+    return render_template("post.html", post=post_data, comments=comments, is_bookmarked=is_bookmarked)
 
 
 @app.route("/post/<int:post_id>/comment", methods=["POST"])
@@ -194,6 +201,7 @@ def post(post_id):
 def add_comment(post_id):
     """Add a comment to a post"""
     content = sanitize_input(request.form.get('content'))
+    parent_id = request.form.get('parent_id', type=int)
     
     if not content or len(content) < 3:
         flash('Comment must be at least 3 characters.', 'error')
@@ -203,7 +211,10 @@ def add_comment(post_id):
         flash('Comment must be less than 1000 characters.', 'error')
         return redirect(url_for('post', post_id=post_id))
     
-    db.insert_comment(post_id, content)
+    user = get_current_user()
+    user_id = user['id'] if user else None
+    
+    db.insert_comment(post_id, content, user_id=user_id, parent_id=parent_id)
     flash('Comment added successfully!', 'success')
     return redirect(url_for('post', post_id=post_id))
 
@@ -349,6 +360,25 @@ def subscriptions():
     )
 
 
+@app.route("/update-email-preferences", methods=["POST"])
+@login_required
+def update_email_preferences():
+    """Update user email notification preferences"""
+    user = get_current_user()
+    
+    # Checkbox value: present = True, absent = False
+    email_notifications = request.form.get('email_notifications') == 'on'
+    
+    db.update_user_email_preferences(user['id'], email_notifications)
+    
+    if email_notifications:
+        flash('Email notifications enabled.', 'success')
+    else:
+        flash('Email notifications disabled.', 'info')
+    
+    return redirect(url_for('subscriptions'))
+
+
 @app.route("/feed")
 @login_required
 def my_feed():
@@ -369,6 +399,198 @@ def my_feed():
         total_pages=total_pages,
         total_posts=total
     )
+
+
+# ============== Bookmark Routes ==============
+
+@app.route("/bookmark/<int:post_id>", methods=["POST"])
+@login_required
+def bookmark_post(post_id):
+    """Bookmark a post"""
+    user = get_current_user()
+    post = db.get_post_by_id(post_id)
+    
+    if not post:
+        abort(404)
+    
+    if db.is_bookmarked(user['id'], post_id):
+        flash('Post already bookmarked.', 'info')
+    else:
+        db.add_bookmark(user['id'], post_id)
+        flash('Post bookmarked!', 'success')
+    
+    # Return to the page they came from
+    return redirect(request.referrer or url_for('post', post_id=post_id))
+
+
+@app.route("/unbookmark/<int:post_id>", methods=["POST"])
+@login_required
+def unbookmark_post(post_id):
+    """Remove a bookmark"""
+    user = get_current_user()
+    
+    db.remove_bookmark(user['id'], post_id)
+    flash('Bookmark removed.', 'info')
+    
+    return redirect(request.referrer or url_for('bookmarks'))
+
+
+@app.route("/bookmarks")
+@login_required
+def bookmarks():
+    """View all bookmarked posts"""
+    user = get_current_user()
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = 12
+    posts, total = db.get_user_bookmarks(user['id'], page=page, per_page=per_page)
+    total_pages = (total + per_page - 1) // per_page
+    
+    return render_template(
+        "bookmarks.html",
+        posts=posts,
+        page=page,
+        total_pages=total_pages,
+        total_posts=total
+    )
+
+
+# ============== Admin Routes ==============
+
+@app.route("/admin")
+@admin_required
+def admin_dashboard():
+    """Admin dashboard with statistics and overview"""
+    stats = db.get_admin_statistics()
+    return render_template("admin/dashboard.html", stats=stats)
+
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    """Admin user management page"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    users, total = db.get_all_users(page=page, per_page=per_page)
+    total_pages = (total + per_page - 1) // per_page
+    
+    return render_template(
+        "admin/users.html",
+        users=users,
+        page=page,
+        total_pages=total_pages,
+        total_users=total
+    )
+
+
+@app.route("/admin/users/<int:user_id>/toggle-admin", methods=["POST"])
+@admin_required
+def admin_toggle_admin(user_id):
+    """Toggle admin status for a user"""
+    current_user = get_current_user()
+    
+    # Prevent self-demotion
+    if current_user['id'] == user_id:
+        flash('You cannot change your own admin status.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    user = db.get_user_by_id(user_id)
+    if user:
+        new_status = not user.get('is_admin', False)
+        db.toggle_user_admin(user_id, new_status)
+        action = "promoted to" if new_status else "demoted from"
+        flash(f'{user["username"]} {action} admin.', 'success')
+    
+    return redirect(url_for('admin_users'))
+
+
+@app.route("/admin/users/<int:user_id>/toggle-active", methods=["POST"])
+@admin_required
+def admin_toggle_active(user_id):
+    """Toggle active status for a user"""
+    current_user = get_current_user()
+    
+    # Prevent self-deactivation
+    if current_user['id'] == user_id:
+        flash('You cannot deactivate your own account.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    user = db.get_user_by_id(user_id)
+    if user:
+        new_status = not user.get('is_active', True)
+        db.toggle_user_active(user_id, new_status)
+        action = "activated" if new_status else "deactivated"
+        flash(f'{user["username"]} account {action}.', 'success')
+    
+    return redirect(url_for('admin_users'))
+
+
+@app.route("/admin/comments")
+@admin_required
+def admin_comments():
+    """Admin comment moderation page"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    comments, total = db.get_spam_comments(page=page, per_page=per_page)
+    total_pages = (total + per_page - 1) // per_page
+    
+    return render_template(
+        "admin/comments.html",
+        comments=comments,
+        page=page,
+        total_pages=total_pages,
+        total_comments=total
+    )
+
+
+@app.route("/admin/comments/<int:comment_id>/approve", methods=["POST"])
+@admin_required
+def admin_approve_comment(comment_id):
+    """Mark a comment as not spam"""
+    db.mark_comment_not_spam(comment_id)
+    flash('Comment approved.', 'success')
+    return redirect(url_for('admin_comments'))
+
+
+@app.route("/admin/comments/<int:comment_id>/delete", methods=["POST"])
+@admin_required
+def admin_delete_comment(comment_id):
+    """Delete a comment"""
+    db.delete_comment(comment_id)
+    flash('Comment deleted.', 'success')
+    return redirect(url_for('admin_comments'))
+
+
+@app.route("/admin/generate-posts", methods=["POST"])
+@admin_required
+def admin_generate_posts():
+    """Manually trigger post generation for all tools"""
+    import threading
+    
+    def generate_async():
+        ai_generators.generate_all_posts(app=app)
+    
+    thread = threading.Thread(target=generate_async, daemon=True)
+    thread.start()
+    
+    flash('Post generation started in background. Check back in a few minutes.', 'info')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route("/admin/generate-posts/<tool_slug>", methods=["POST"])
+@admin_required
+def admin_generate_single_post(tool_slug):
+    """Manually trigger post generation for a specific tool"""
+    import threading
+    
+    def generate_async():
+        ai_generators.generate_post_for_tool(tool_slug, app=app)
+    
+    thread = threading.Thread(target=generate_async, daemon=True)
+    thread.start()
+    
+    flash(f'Post generation for {tool_slug} started. Check back in a few minutes.', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 
 # ============== Scheduled Tasks ==============
@@ -403,27 +625,261 @@ def server_error(e):
     return render_template('500.html'), 500
 
 
+# ============== AI Comparison Routes ==============
+
+@app.route("/compare")
+def compare_page():
+    """AI comparison landing page"""
+    categories = db.get_categories_with_counts()
+    recent_comparisons = db.get_recent_comparisons(limit=5)
+    return render_template(
+        "compare.html",
+        categories=categories,
+        recent_comparisons=recent_comparisons
+    )
+
+
+@app.route("/compare/category/<category>")
+def compare_by_category(category):
+    """Compare posts by category from different AI tools"""
+    posts = db.get_posts_by_category_for_comparison(category)
+    
+    if len(posts) < 2:
+        flash('Not enough posts from different AI tools in this category for comparison.', 'warning')
+        return redirect(url_for('compare_page'))
+    
+    # Create a comparison
+    post_ids = [p['id'] for p in posts]
+    comparison_id = db.create_comparison(f"Category: {category}", post_ids)
+    
+    return redirect(url_for('view_comparison', comparison_id=comparison_id))
+
+
+@app.route("/compare/<int:comparison_id>")
+def view_comparison(comparison_id):
+    """View a specific comparison with voting"""
+    comparison = db.get_comparison_by_id(comparison_id)
+    if not comparison:
+        abort(404)
+    
+    vote_counts = db.get_vote_counts(comparison_id)
+    total_votes = sum(vote_counts.values())
+    
+    user_vote = None
+    user = get_current_user()
+    if user:
+        user_vote = db.get_user_vote(comparison_id, user['id'])
+    
+    # Calculate style metrics for each post
+    for post in comparison['posts']:
+        content = post.get('content', '')
+        post['metrics'] = calculate_content_metrics(content)
+        post['votes'] = vote_counts.get(post['id'], 0)
+        post['vote_percentage'] = (post['votes'] / total_votes * 100) if total_votes > 0 else 0
+    
+    return render_template(
+        "comparison.html",
+        comparison=comparison,
+        user_vote=user_vote,
+        total_votes=total_votes
+    )
+
+
+@app.route("/compare/<int:comparison_id>/vote/<int:post_id>", methods=["POST"])
+@login_required
+def vote_comparison(comparison_id, post_id):
+    """Vote for a post in a comparison"""
+    user = get_current_user()
+    
+    # Verify post is part of comparison
+    comparison = db.get_comparison_by_id(comparison_id)
+    if not comparison:
+        abort(404)
+    
+    post_ids = [p['id'] for p in comparison['posts']]
+    if post_id not in post_ids:
+        abort(400)
+    
+    db.add_vote(comparison_id, user['id'], post_id)
+    flash('Your vote has been recorded!', 'success')
+    
+    return redirect(url_for('view_comparison', comparison_id=comparison_id))
+
+
+def calculate_content_metrics(content):
+    """Calculate style metrics for content"""
+    import re
+    from html import unescape
+    
+    # Strip HTML tags
+    text = re.sub(r'<[^>]+>', '', content)
+    text = unescape(text)
+    
+    # Word count
+    words = text.split()
+    word_count = len(words)
+    
+    # Sentence count (approximate)
+    sentences = re.split(r'[.!?]+', text)
+    sentence_count = len([s for s in sentences if s.strip()])
+    
+    # Average words per sentence
+    avg_words_per_sentence = word_count / sentence_count if sentence_count > 0 else 0
+    
+    # Paragraph count
+    paragraphs = [p for p in text.split('\n\n') if p.strip()]
+    paragraph_count = len(paragraphs) or 1
+    
+    # Unique word ratio (vocabulary richness)
+    unique_words = len(set(w.lower() for w in words))
+    vocab_richness = (unique_words / word_count * 100) if word_count > 0 else 0
+    
+    # Reading level estimate (simplified Flesch-Kincaid approximation)
+    # Lower = easier to read
+    syllable_estimate = sum(1 for word in words for char in word if char.lower() in 'aeiou')
+    avg_syllables = syllable_estimate / word_count if word_count > 0 else 0
+    reading_level = round(0.39 * avg_words_per_sentence + 11.8 * avg_syllables - 15.59, 1)
+    reading_level = max(0, min(18, reading_level))  # Clamp between 0-18
+    
+    return {
+        'word_count': word_count,
+        'sentence_count': sentence_count,
+        'paragraph_count': paragraph_count,
+        'avg_words_per_sentence': round(avg_words_per_sentence, 1),
+        'vocab_richness': round(vocab_richness, 1),
+        'reading_level': reading_level
+    }
+
+
 # ============== API Routes ==============
 
 @app.route("/api/tools")
 def api_tools():
-    """API endpoint to get all tools"""
+    """API endpoint to get all AI tools"""
     tools = db.get_all_tools()
-    return jsonify(tools)
+    return jsonify({
+        'success': True,
+        'data': tools,
+        'count': len(tools)
+    })
 
 
-@app.route("/api/posts/<int:tool_id>")
+@app.route("/api/tools/<slug>")
+def api_tool_by_slug(slug):
+    """API endpoint to get a single tool by slug"""
+    tool = db.get_tool_by_slug(slug)
+    if not tool:
+        return jsonify({'success': False, 'error': 'Tool not found'}), 404
+    return jsonify({
+        'success': True,
+        'data': tool
+    })
+
+
+@app.route("/api/posts")
+def api_posts():
+    """API endpoint to get paginated posts"""
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 12, type=int), 50)  # Max 50 per page
+    tool_id = request.args.get('tool_id', type=int)
+    category = request.args.get('category')
+    search = request.args.get('q')
+    
+    if search:
+        posts, total = db.search_posts(search, page=page, per_page=per_page)
+    elif tool_id:
+        posts, total = db.get_posts_by_tool(tool_id, page=page, per_page=per_page)
+    elif category:
+        posts, total = db.get_posts_by_category(category, page=page, per_page=per_page)
+    else:
+        posts, total = db.get_all_posts(page=page, per_page=per_page)
+    
+    total_pages = (total + per_page - 1) // per_page
+    
+    return jsonify({
+        'success': True,
+        'data': posts,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total': total,
+            'total_pages': total_pages,
+            'has_next': page < total_pages,
+            'has_prev': page > 1
+        }
+    })
+
+
+@app.route("/api/posts/<int:post_id>")
+def api_post_by_id(post_id):
+    """API endpoint to get a single post by ID"""
+    post = db.get_post_by_id(post_id)
+    if not post:
+        return jsonify({'success': False, 'error': 'Post not found'}), 404
+    
+    comments = db.get_comments_by_post(post_id)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            **post,
+            'comments': comments,
+            'comment_count': len(comments)
+        }
+    })
+
+
+@app.route("/api/posts/<int:tool_id>/by-tool")
 def api_posts_by_tool(tool_id):
-    """API endpoint to get posts by tool"""
-    posts, _ = db.get_posts_by_tool(tool_id)
-    return jsonify(posts)
+    """API endpoint to get posts by tool ID (legacy endpoint)"""
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 12, type=int), 50)
+    posts, total = db.get_posts_by_tool(tool_id, page=page, per_page=per_page)
+    
+    return jsonify({
+        'success': True,
+        'data': posts,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total': total,
+            'total_pages': (total + per_page - 1) // per_page
+        }
+    })
+
+
+@app.route("/api/categories")
+def api_categories():
+    """API endpoint to get all categories with post counts"""
+    categories = db.get_categories_with_counts()
+    return jsonify({
+        'success': True,
+        'data': categories
+    })
+
+
+@app.route("/api/stats")
+def api_stats():
+    """API endpoint to get public statistics"""
+    stats = {
+        'total_posts': db.get_post_count(),
+        'total_tools': len(db.get_all_tools()),
+        'recent_posts': db.get_recent_posts(limit=5)
+    }
+    return jsonify({
+        'success': True,
+        'data': stats
+    })
 
 
 # ============== Main ==============
 
 if __name__ == "__main__":
-    # Setup scheduler
-    schedule.every(24).hours.do(ai_generators.generate_all_posts)
+    # Setup scheduler with app context for notifications
+    def generate_with_notifications():
+        ai_generators.generate_all_posts(app=app)
+    
+    schedule.every(24).hours.do(generate_with_notifications)
     schedule.every(30).days.do(cleanup_spam_comments)
     
     scheduler_active = True

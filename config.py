@@ -46,6 +46,19 @@ class Config:
     # Rate limiting
     RATELIMIT_DEFAULT = "100 per hour"
     
+    # Email settings (for notifications)
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true'
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')  # App password for Gmail
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'AI Blog <noreply@aiblog.com>')
+    MAIL_ENABLED = os.environ.get('MAIL_ENABLED', 'false').lower() == 'true'
+    
+    # Site settings
+    SITE_URL = os.environ.get('SITE_URL', 'http://localhost:5000')
+    SITE_NAME = 'AI Blog'
+    
     # AI Tools configuration with native providers
     AI_TOOLS = {
         'chatgpt': {

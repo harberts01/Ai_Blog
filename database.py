@@ -270,22 +270,123 @@ def get_post_by_id(post_id):
     return None
 
 
-def insert_post(title, content, category, tool_id=None):
-    """Insert a new blog post"""
+def get_posts_by_category(category, page=1, per_page=POSTS_PER_PAGE):
+    """Fetch paginated posts for a specific category"""
     connection = get_connection()
     if not connection:
-        return False
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            # Get total count for this category
+            cursor.execute("SELECT COUNT(*) FROM Post WHERE Category = %s", (category,))
+            total = cursor.fetchone()[0]
+            
+            # Get paginated posts
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
+                       t.name as tool_name, t.slug as tool_slug
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE p.Category = %s
+                ORDER BY p.CreatedAt DESC
+                LIMIT %s OFFSET %s
+            """, (category, per_page, offset))
+            posts = [
+                {
+                    'id': row[0], 
+                    'title': row[1], 
+                    'content': row[2], 
+                    'category': row[3],
+                    'created_at': row[4],
+                    'tool_id': row[5],
+                    'tool_name': row[6],
+                    'tool_slug': row[7]
+                } 
+                for row in cursor.fetchall()
+            ]
+            return posts, total
+    finally:
+        connection.close()
+
+
+def get_categories_with_counts():
+    """Get all categories with their post counts"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT Category, COUNT(*) as count
+                FROM Post
+                GROUP BY Category
+                ORDER BY count DESC
+            """)
+            return [{'name': row[0], 'count': row[1]} for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+def get_post_count():
+    """Get total number of posts"""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM Post")
+            return cursor.fetchone()[0]
+    finally:
+        connection.close()
+
+
+def get_recent_posts(limit=5):
+    """Get the most recent posts"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Category, p.CreatedAt, t.name as tool_name, t.slug as tool_slug
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                ORDER BY p.CreatedAt DESC
+                LIMIT %s
+            """, (limit,))
+            return [
+                {
+                    'id': row[0],
+                    'title': row[1],
+                    'category': row[2],
+                    'created_at': row[3],
+                    'tool_name': row[4],
+                    'tool_slug': row[5]
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
+def insert_post(title, content, category, tool_id=None):
+    """Insert a new blog post and return the post ID"""
+    connection = get_connection()
+    if not connection:
+        return None
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Post (Title, Content, Category, tool_id) VALUES (%s, %s, %s, %s)",
+                "INSERT INTO Post (Title, Content, Category, tool_id) VALUES (%s, %s, %s, %s) RETURNING postid",
                 (title, content, category, tool_id)
             )
+            post_id = cursor.fetchone()[0]
             connection.commit()
-            return True
+            return post_id
     except Exception as e:
         print(f"Error inserting post: {e}")
-        return False
+        return None
     finally:
         connection.close()
 
@@ -371,7 +472,7 @@ def get_user_by_id(user_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT user_id, email, password_hash, username, is_active FROM Users WHERE user_id = %s",
+                "SELECT user_id, email, password_hash, username, is_active, email_notifications, is_admin FROM Users WHERE user_id = %s",
                 (user_id,)
             )
             row = cursor.fetchone()
@@ -381,11 +482,33 @@ def get_user_by_id(user_id):
                     'email': row[1],
                     'password_hash': row[2],
                     'username': row[3],
-                    'is_active': row[4]
+                    'is_active': row[4],
+                    'email_notifications': row[5] if row[5] is not None else True,
+                    'is_admin': row[6] if row[6] is not None else False
                 }
     finally:
         connection.close()
     return None
+
+
+def update_user_email_preferences(user_id, email_notifications):
+    """Update user email notification preferences"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE Users SET email_notifications = %s WHERE user_id = %s",
+                (email_notifications, user_id)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error updating email preferences: {e}")
+        return False
+    finally:
+        connection.close()
 
 
 def create_user(email, password_hash, username):
@@ -496,6 +619,24 @@ def is_subscribed(user_id, tool_id):
         connection.close()
 
 
+def get_subscriber_emails_by_tool(tool_id):
+    """Get email addresses of all users subscribed to a tool (for notifications)"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT u.email
+                FROM Users u
+                JOIN Subscription s ON u.user_id = s.user_id
+                WHERE s.tool_id = %s AND u.email_notifications = TRUE
+            """, (tool_id,))
+            return [row[0] for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
 def get_subscribed_posts(user_id, page=1, per_page=POSTS_PER_PAGE):
     """Get paginated posts from tools the user is subscribed to"""
     connection = get_connection()
@@ -545,34 +686,60 @@ def get_subscribed_posts(user_id, page=1, per_page=POSTS_PER_PAGE):
 # ============== Comments ==============
 
 def get_comments_by_post(post_id):
-    """Get all comments for a post"""
+    """Get all comments for a post with user info and threading structure"""
     connection = get_connection()
     if not connection:
         return []
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT commentid, content, CreatedAt FROM Comment WHERE postid = %s ORDER BY CreatedAt DESC",
-                (post_id,)
-            )
-            return [
-                {'id': row[0], 'content': row[1], 'created_at': row[2]}
-                for row in cursor.fetchall()
-            ]
+            cursor.execute("""
+                SELECT c.commentid, c.content, c.CreatedAt, c.parent_id, c.user_id,
+                       u.username
+                FROM Comment c
+                LEFT JOIN Users u ON c.user_id = u.user_id
+                WHERE c.postid = %s AND c.is_spam = FALSE
+                ORDER BY c.CreatedAt ASC
+            """, (post_id,))
+            
+            comments = []
+            for row in cursor.fetchall():
+                comments.append({
+                    'id': row[0],
+                    'content': row[1],
+                    'created_at': row[2],
+                    'parent_id': row[3],
+                    'user_id': row[4],
+                    'username': row[5] or 'Anonymous',
+                    'replies': []
+                })
+            
+            # Build threaded structure
+            comment_map = {c['id']: c for c in comments}
+            root_comments = []
+            
+            for comment in comments:
+                if comment['parent_id'] is None:
+                    root_comments.append(comment)
+                else:
+                    parent = comment_map.get(comment['parent_id'])
+                    if parent:
+                        parent['replies'].append(comment)
+            
+            return root_comments
     finally:
         connection.close()
 
 
-def insert_comment(post_id, content):
-    """Insert a new comment"""
+def insert_comment(post_id, content, user_id=None, parent_id=None):
+    """Insert a new comment or reply"""
     connection = get_connection()
     if not connection:
         return False
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Comment (postid, content) VALUES (%s, %s)",
-                (post_id, content)
+                "INSERT INTO Comment (postid, content, user_id, parent_id) VALUES (%s, %s, %s, %s)",
+                (post_id, content, user_id, parent_id)
             )
             connection.commit()
             return True
@@ -601,5 +768,619 @@ def delete_old_spam_comments(days=30):
     except Exception as e:
         print(f"Error deleting spam comments: {e}")
         return 0
+    finally:
+        connection.close()
+
+
+# ============== Bookmarks ==============
+
+def add_bookmark(user_id, post_id):
+    """Add a bookmark for a user"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO Bookmark (user_id, post_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, post_id)
+            )
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"Error adding bookmark: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def remove_bookmark(user_id, post_id):
+    """Remove a bookmark for a user"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM Bookmark WHERE user_id = %s AND post_id = %s",
+                (user_id, post_id)
+            )
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"Error removing bookmark: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def is_bookmarked(user_id, post_id):
+    """Check if a post is bookmarked by a user"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM Bookmark WHERE user_id = %s AND post_id = %s",
+                (user_id, post_id)
+            )
+            return cursor.fetchone() is not None
+    finally:
+        connection.close()
+
+
+def get_user_bookmarks(user_id, page=1, per_page=POSTS_PER_PAGE):
+    """Get all bookmarked posts for a user with pagination"""
+    connection = get_connection()
+    if not connection:
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            # Get total count
+            cursor.execute(
+                "SELECT COUNT(*) FROM Bookmark WHERE user_id = %s",
+                (user_id,)
+            )
+            total = cursor.fetchone()[0]
+            
+            # Get paginated bookmarks
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
+                       t.name as tool_name, t.slug as tool_slug, b.created_at as bookmarked_at
+                FROM Bookmark b
+                JOIN Post p ON b.post_id = p.postid
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE b.user_id = %s
+                ORDER BY b.created_at DESC
+                LIMIT %s OFFSET %s
+            """, (user_id, per_page, offset))
+            posts = [
+                {
+                    'id': row[0],
+                    'title': row[1],
+                    'content': row[2],
+                    'category': row[3],
+                    'created_at': row[4],
+                    'tool_id': row[5],
+                    'tool_name': row[6],
+                    'tool_slug': row[7],
+                    'bookmarked_at': row[8]
+                }
+                for row in cursor.fetchall()
+            ]
+            return posts, total
+    finally:
+        connection.close()
+
+
+def get_bookmarked_post_ids(user_id):
+    """Get list of post IDs bookmarked by a user (for checking multiple posts)"""
+    connection = get_connection()
+    if not connection:
+        return set()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT post_id FROM Bookmark WHERE user_id = %s",
+                (user_id,)
+            )
+            return {row[0] for row in cursor.fetchall()}
+    finally:
+        connection.close()
+
+
+# ============== Admin Functions ==============
+
+def get_admin_statistics():
+    """Get comprehensive statistics for admin dashboard"""
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        stats = {}
+        with connection.cursor() as cursor:
+            # Total posts
+            cursor.execute("SELECT COUNT(*) FROM Post")
+            stats['total_posts'] = cursor.fetchone()[0]
+            
+            # Posts this week
+            cursor.execute("SELECT COUNT(*) FROM Post WHERE CreatedAt >= CURRENT_DATE - INTERVAL '7 days'")
+            stats['posts_this_week'] = cursor.fetchone()[0]
+            
+            # Posts this month
+            cursor.execute("SELECT COUNT(*) FROM Post WHERE CreatedAt >= CURRENT_DATE - INTERVAL '30 days'")
+            stats['posts_this_month'] = cursor.fetchone()[0]
+            
+            # Total users
+            cursor.execute("SELECT COUNT(*) FROM Users")
+            stats['total_users'] = cursor.fetchone()[0]
+            
+            # Users this week
+            cursor.execute("SELECT COUNT(*) FROM Users WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'")
+            stats['new_users_this_week'] = cursor.fetchone()[0]
+            
+            # Total comments
+            cursor.execute("SELECT COUNT(*) FROM Comment")
+            stats['total_comments'] = cursor.fetchone()[0]
+            
+            # Comments this week
+            cursor.execute("SELECT COUNT(*) FROM Comment WHERE CreatedAt >= CURRENT_DATE - INTERVAL '7 days'")
+            stats['comments_this_week'] = cursor.fetchone()[0]
+            
+            # Spam comments pending
+            cursor.execute("SELECT COUNT(*) FROM Comment WHERE is_spam = TRUE")
+            stats['spam_comments'] = cursor.fetchone()[0]
+            
+            # Total subscriptions
+            cursor.execute("SELECT COUNT(*) FROM Subscription")
+            stats['total_subscriptions'] = cursor.fetchone()[0]
+            
+            # Total bookmarks
+            cursor.execute("SELECT COUNT(*) FROM Bookmark")
+            stats['total_bookmarks'] = cursor.fetchone()[0]
+            
+            # Posts per tool
+            cursor.execute("""
+                SELECT t.name, COUNT(p.postid) as count
+                FROM AITool t
+                LEFT JOIN Post p ON t.tool_id = p.tool_id
+                GROUP BY t.tool_id, t.name
+                ORDER BY count DESC
+            """)
+            stats['posts_per_tool'] = [{'name': row[0], 'count': row[1]} for row in cursor.fetchall()]
+            
+            # Recent posts (last 10)
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Category, p.CreatedAt, t.name
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                ORDER BY p.CreatedAt DESC
+                LIMIT 10
+            """)
+            stats['recent_posts'] = [
+                {
+                    'id': row[0],
+                    'title': row[1],
+                    'category': row[2],
+                    'created_at': row[3],
+                    'tool_name': row[4]
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            # Recent users (last 10)
+            cursor.execute("""
+                SELECT user_id, username, email, created_at, is_admin
+                FROM Users
+                ORDER BY created_at DESC
+                LIMIT 10
+            """)
+            stats['recent_users'] = [
+                {
+                    'id': row[0],
+                    'username': row[1],
+                    'email': row[2],
+                    'created_at': row[3],
+                    'is_admin': row[4]
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            # Posts per day (last 30 days for chart)
+            cursor.execute("""
+                SELECT DATE(CreatedAt) as date, COUNT(*) as count
+                FROM Post
+                WHERE CreatedAt >= CURRENT_DATE - INTERVAL '30 days'
+                GROUP BY DATE(CreatedAt)
+                ORDER BY date
+            """)
+            stats['posts_per_day'] = [{'date': str(row[0]), 'count': row[1]} for row in cursor.fetchall()]
+            
+        return stats
+    finally:
+        connection.close()
+
+
+def get_all_users(page=1, per_page=20):
+    """Get paginated list of all users for admin"""
+    connection = get_connection()
+    if not connection:
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) FROM Users")
+            total = cursor.fetchone()[0]
+            
+            # Get users
+            cursor.execute("""
+                SELECT user_id, username, email, is_active, is_admin, email_notifications, created_at
+                FROM Users
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            
+            users = [
+                {
+                    'id': row[0],
+                    'username': row[1],
+                    'email': row[2],
+                    'is_active': row[3],
+                    'is_admin': row[4],
+                    'email_notifications': row[5],
+                    'created_at': row[6]
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            return users, total
+    finally:
+        connection.close()
+
+
+def get_spam_comments(page=1, per_page=20):
+    """Get paginated spam comments for moderation"""
+    connection = get_connection()
+    if not connection:
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) FROM Comment WHERE is_spam = TRUE")
+            total = cursor.fetchone()[0]
+            
+            # Get comments
+            cursor.execute("""
+                SELECT c.commentid, c.content, c.CreatedAt, c.postid, p.Title, u.username
+                FROM Comment c
+                LEFT JOIN Post p ON c.postid = p.postid
+                LEFT JOIN Users u ON c.user_id = u.user_id
+                WHERE c.is_spam = TRUE
+                ORDER BY c.CreatedAt DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            
+            comments = [
+                {
+                    'id': row[0],
+                    'content': row[1],
+                    'created_at': row[2],
+                    'post_id': row[3],
+                    'post_title': row[4],
+                    'username': row[5] or 'Anonymous'
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            return comments, total
+    finally:
+        connection.close()
+
+
+def mark_comment_not_spam(comment_id):
+    """Mark a comment as not spam"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE Comment SET is_spam = FALSE WHERE commentid = %s",
+                (comment_id,)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
+def delete_comment(comment_id):
+    """Delete a comment"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM Comment WHERE commentid = %s",
+                (comment_id,)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
+def toggle_user_admin(user_id, is_admin):
+    """Toggle admin status for a user"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE Users SET is_admin = %s WHERE user_id = %s",
+                (is_admin, user_id)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
+def toggle_user_active(user_id, is_active):
+    """Toggle active status for a user"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE Users SET is_active = %s WHERE user_id = %s",
+                (is_active, user_id)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
+# ============== AI Comparison Functions ==============
+
+def get_posts_by_category_for_comparison(category):
+    """Get posts from different AI tools for the same category"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            # Get one post per tool for the given category
+            cursor.execute("""
+                SELECT DISTINCT ON (p.tool_id)
+                    p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
+                    t.name as tool_name, t.slug as tool_slug
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE p.Category = %s
+                ORDER BY p.tool_id, p.CreatedAt DESC
+            """, (category,))
+            return [
+                {
+                    'id': row[0],
+                    'title': row[1],
+                    'content': row[2],
+                    'category': row[3],
+                    'created_at': row[4],
+                    'tool_id': row[5],
+                    'tool_name': row[6],
+                    'tool_slug': row[7]
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
+def get_random_comparison_posts(limit=3):
+    """Get random posts from different AI tools for comparison"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            # Get one random recent post per tool
+            cursor.execute("""
+                SELECT DISTINCT ON (p.tool_id)
+                    p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
+                    t.name as tool_name, t.slug as tool_slug
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE p.CreatedAt >= CURRENT_DATE - INTERVAL '30 days'
+                ORDER BY p.tool_id, RANDOM()
+                LIMIT %s
+            """, (limit,))
+            return [
+                {
+                    'id': row[0],
+                    'title': row[1],
+                    'content': row[2],
+                    'category': row[3],
+                    'created_at': row[4],
+                    'tool_id': row[5],
+                    'tool_name': row[6],
+                    'tool_slug': row[7]
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
+def create_comparison(topic, post_ids):
+    """Create a new comparison with selected posts"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # Create comparison
+            cursor.execute(
+                "INSERT INTO Comparison (topic) VALUES (%s) RETURNING comparison_id",
+                (topic,)
+            )
+            comparison_id = cursor.fetchone()[0]
+            
+            # Add posts to comparison
+            for post_id in post_ids:
+                cursor.execute(
+                    "INSERT INTO ComparisonPost (comparison_id, post_id) VALUES (%s, %s)",
+                    (comparison_id, post_id)
+                )
+            
+            connection.commit()
+            return comparison_id
+    except Exception as e:
+        print(f"Error creating comparison: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def get_comparison_by_id(comparison_id):
+    """Get comparison details with posts"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # Get comparison info
+            cursor.execute(
+                "SELECT comparison_id, topic, created_at FROM Comparison WHERE comparison_id = %s",
+                (comparison_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            comparison = {
+                'id': row[0],
+                'topic': row[1],
+                'created_at': row[2],
+                'posts': []
+            }
+            
+            # Get posts in comparison
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
+                       t.name as tool_name, t.slug as tool_slug
+                FROM ComparisonPost cp
+                JOIN Post p ON cp.post_id = p.postid
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE cp.comparison_id = %s
+            """, (comparison_id,))
+            
+            for row in cursor.fetchall():
+                comparison['posts'].append({
+                    'id': row[0],
+                    'title': row[1],
+                    'content': row[2],
+                    'category': row[3],
+                    'created_at': row[4],
+                    'tool_id': row[5],
+                    'tool_name': row[6],
+                    'tool_slug': row[7]
+                })
+            
+            return comparison
+    finally:
+        connection.close()
+
+
+def add_vote(comparison_id, user_id, post_id):
+    """Add or update a vote for a comparison"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            # Upsert vote
+            cursor.execute("""
+                INSERT INTO Vote (comparison_id, user_id, post_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (comparison_id, user_id) 
+                DO UPDATE SET post_id = %s, created_at = CURRENT_TIMESTAMP
+            """, (comparison_id, user_id, post_id, post_id))
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"Error adding vote: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def get_vote_counts(comparison_id):
+    """Get vote counts for each post in a comparison"""
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT post_id, COUNT(*) as votes
+                FROM Vote
+                WHERE comparison_id = %s
+                GROUP BY post_id
+            """, (comparison_id,))
+            return {row[0]: row[1] for row in cursor.fetchall()}
+    finally:
+        connection.close()
+
+
+def get_user_vote(comparison_id, user_id):
+    """Get the user's vote for a comparison"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT post_id FROM Vote WHERE comparison_id = %s AND user_id = %s",
+                (comparison_id, user_id)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+    finally:
+        connection.close()
+
+
+def get_recent_comparisons(limit=10):
+    """Get recent comparisons"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT c.comparison_id, c.topic, c.created_at, COUNT(cp.id) as post_count
+                FROM Comparison c
+                LEFT JOIN ComparisonPost cp ON c.comparison_id = cp.comparison_id
+                GROUP BY c.comparison_id
+                ORDER BY c.created_at DESC
+                LIMIT %s
+            """, (limit,))
+            return [
+                {
+                    'id': row[0],
+                    'topic': row[1],
+                    'created_at': row[2],
+                    'post_count': row[3]
+                }
+                for row in cursor.fetchall()
+            ]
     finally:
         connection.close()

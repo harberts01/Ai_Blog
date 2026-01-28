@@ -59,6 +59,33 @@ def logout_user():
     session.clear()
 
 
+def admin_required(f):
+    """
+    Decorator to require admin access for routes.
+    
+    Redirects non-admin users to home page with error message.
+    
+    Usage:
+        @app.route('/admin')
+        @admin_required
+        def admin_route():
+            ...
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        
+        user = db.get_user_by_id(session['user_id'])
+        if not user or not user.get('is_admin'):
+            flash('You do not have permission to access this page.', 'error')
+            return redirect(url_for('home'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def is_authenticated():
     """
     Check if a user is currently authenticated.

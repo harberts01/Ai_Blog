@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}User Management - Admin{% endblock %}
+{% block content %}
+<div class="py-5 bg-light">
+  <div class="container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+            <li class="breadcrumb-item active">Users</li>
+          </ol>
+        </nav>
+        <h1 class="h2 mb-0">
+          <i class="bi bi-people me-2"></i>User Management
+        </h1>
+      </div>
+      <div>
+        <span class="badge bg-primary fs-6">{{ total_users }} total users</span>
+      </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>User</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Role</th>
+                <th>Notifications</th>
+                <th>Joined</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for user in users %}
+              <tr>
+                <td>
+                  <div class="d-flex align-items-center">
+                    <div class="bg-{% if user.is_admin %}danger{% else %}primary{% endif %} text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 36px; height: 36px;">
+                      <i class="bi bi-person"></i>
+                    </div>
+                    <div>
+                      <strong>{{ user.username }}</strong>
+                      {% if user.is_admin %}
+                      <i class="bi bi-shield-check text-danger ms-1" title="Admin"></i>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+                <td>{{ user.email }}</td>
+                <td>
+                  {% if user.is_active %}
+                  <span class="badge bg-success">Active</span>
+                  {% else %}
+                  <span class="badge bg-danger">Inactive</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if user.is_admin %}
+                  <span class="badge bg-danger">Admin</span>
+                  {% else %}
+                  <span class="badge bg-secondary">User</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if user.email_notifications %}
+                  <i class="bi bi-bell-fill text-success" title="Enabled"></i>
+                  {% else %}
+                  <i class="bi bi-bell-slash text-muted" title="Disabled"></i>
+                  {% endif %}
+                </td>
+                <td class="text-muted small">{{ user.created_at.strftime('%b %d, %Y') }}</td>
+                <td class="text-end">
+                  {% if user.id != current_user.id %}
+                  <div class="btn-group btn-group-sm">
+                    <form action="{{ url_for('admin_toggle_active', user_id=user.id) }}" method="POST" class="d-inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <button type="submit" class="btn btn-outline-{% if user.is_active %}warning{% else %}success{% endif %}" title="{% if user.is_active %}Deactivate{% else %}Activate{% endif %}">
+                        <i class="bi bi-{% if user.is_active %}x-circle{% else %}check-circle{% endif %}"></i>
+                      </button>
+                    </form>
+                    <form action="{{ url_for('admin_toggle_admin', user_id=user.id) }}" method="POST" class="d-inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <button type="submit" class="btn btn-outline-{% if user.is_admin %}secondary{% else %}danger{% endif %}" title="{% if user.is_admin %}Remove admin{% else %}Make admin{% endif %}">
+                        <i class="bi bi-shield{% if user.is_admin %}-x{% else %}-check{% endif %}"></i>
+                      </button>
+                    </form>
+                  </div>
+                  {% else %}
+                  <span class="text-muted small">You</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">No users found</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav aria-label="User pagination" class="mt-4">
+      <ul class="pagination justify-content-center mb-0">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin_users', page=page-1) }}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+        {% for p in range(1, total_pages + 1) %}
+          {% if p == page %}
+          <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+          {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+          <li class="page-item"><a class="page-link" href="{{ url_for('admin_users', page=p) }}">{{ p }}</a></li>
+          {% elif p == page - 3 or p == page + 3 %}
+          <li class="page-item disabled"><span class="page-link">...</span></li>
+          {% endif %}
+        {% endfor %}
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin_users', page=page+1) }}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
