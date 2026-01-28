@@ -50,6 +50,7 @@ tool.description }}{% endblock %} {% block content %}
           method="POST"
           class="d-inline"
         >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
           <button type="submit" class="btn btn-outline-danger btn-lg">
             <i class="bi bi-bell-slash me-2"></i>Unsubscribe
           </button>
@@ -60,6 +61,7 @@ tool.description }}{% endblock %} {% block content %}
           method="POST"
           class="d-inline"
         >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
           <button type="submit" class="btn btn-primary btn-lg">
             <i class="bi bi-bell me-2"></i>Subscribe
           </button>
@@ -78,11 +80,13 @@ tool.description }}{% endblock %} {% block content %}
 <!-- Posts Section -->
 <section class="py-5">
   <div class="container">
-    <h2 class="mb-4">
-      <i class="bi bi-file-earmark-text me-2"></i>
-      Posts from {{ tool.name }}
-      <span class="badge bg-secondary">{{ posts|length }}</span>
-    </h2>
+    <div class="mb-4">
+      <h2>
+        <i class="bi bi-file-earmark-text me-2"></i>
+        Posts from {{ tool.name }}
+        <span class="badge bg-secondary">{{ total_posts }}</span>
+      </h2>
+    </div>
 
     {% if posts %}
     <div class="row g-4">
@@ -110,7 +114,11 @@ tool.description }}{% endblock %} {% block content %}
               <small class="text-muted">
                 {% if post.created_at %}
                 <i class="bi bi-calendar3 me-1"></i>
-                {{ post.created_at.strftime('%b %d, %Y') }} {% endif %}
+                {{ post.created_at.strftime('%b %d, %Y') }}
+                {% endif %}
+                <span class="ms-2">
+                  <i class="bi bi-clock me-1"></i>{{ post.content|reading_time }}
+                </span>
               </small>
               <a
                 href="{{ url_for('post', post_id=post.id) }}"
@@ -124,6 +132,10 @@ tool.description }}{% endblock %} {% block content %}
       </div>
       {% endfor %}
     </div>
+    
+    <!-- Pagination -->
+    {% include 'components/pagination.html' %}
+    
     {% else %}
     <div class="text-center py-5">
       <i class="bi bi-file-earmark-text display-1 text-muted"></i>
@@ -150,6 +162,7 @@ tool.description }}{% endblock %} {% block content %}
       method="POST"
       class="d-inline"
     >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <button type="submit" class="btn btn-light btn-lg">
         <i class="bi bi-bell me-2"></i>Subscribe Now
       </button>

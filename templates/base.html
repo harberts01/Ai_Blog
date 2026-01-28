@@ -32,7 +32,7 @@
     <!-- Custom Styles -->
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='styles.css') }}"
+      href="{{ url_for('static', filename='css/styles.css') }}"
     />
   </head>
   <body>
@@ -93,6 +93,23 @@
             </li>
             {% endif %}
           </ul>
+
+          <!-- Search Form -->
+          <form action="{{ url_for('search') }}" method="GET" class="d-flex me-3">
+            <div class="input-group input-group-sm">
+              <input 
+                type="text" 
+                name="q" 
+                class="form-control" 
+                placeholder="Search..." 
+                aria-label="Search"
+                style="min-width: 150px;"
+              >
+              <button class="btn btn-outline-light" type="submit">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </form>
 
           <ul class="navbar-nav">
             {% if current_user %}

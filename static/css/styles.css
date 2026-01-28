@@ -25,6 +25,18 @@
   --transition: all 0.2s ease-in-out;
 }
 
+/* ========== Reading Progress Bar ========== */
+.reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary-color), var(--purple-color));
+  z-index: 9999;
+  transition: width 0.1s ease-out;
+}
+
 /* ========== Custom Colors ========== */
 .text-purple {
   color: var(--purple-color) !important;

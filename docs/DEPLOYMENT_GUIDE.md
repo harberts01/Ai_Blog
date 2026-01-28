@@ -1,8 +1,8 @@
 # AI Blog Platform - Deployment Guide
 
-**Version:** 2.0.0  
-**Last Updated:** January 24, 2026  
-**Target Platform:** Hostinger Cloud Startup
+**Version:** 3.0.0  
+**Last Updated:** January 27, 2026  
+**Target Platform:** Hostinger Cloud Startup (or any VPS with PostgreSQL)
 
 ---
 
@@ -87,14 +87,18 @@ git log --all --full-history -- .env
 # If found, rotate ALL your API keys immediately!
 ```
 
-### 2.3 Prepare for MySQL Database
+### 2.3 Database Configuration
 
-Hostinger Cloud uses MySQL. Update your `database.py` to support MySQL:
+This application uses **PostgreSQL**. Ensure your deployment environment has PostgreSQL available.
 
+**Local Development:**
 ```python
-# Install MySQL connector
-# pip install mysql-connector-python
+# Install PostgreSQL adapter (already in requirements.txt)
+pip install psycopg2-binary
 ```
+
+**Database Schema:**
+The `schema.sql` file in the project root contains all table definitions and can be run against any PostgreSQL database.
 
 ### 2.4 Push to Git Repository
 
@@ -162,35 +166,95 @@ In hPanel:
 
 ## 4. Database Setup
 
-### 4.1 Create MySQL Database
+### 4.1 PostgreSQL Options on Hostinger
 
-1. In hPanel, go to **Databases → MySQL Databases**
-2. Create new database:
-   - **Database name:** `aiblog_prod`
-   - **Username:** `aiblog_user`
-   - **Password:** Generate a strong password
-3. Note the **MySQL hostname** (usually `localhost` or provided hostname)
+Hostinger Cloud Startup includes MySQL by default. For PostgreSQL, you have three options:
 
-### 4.2 Update Database Configuration
+#### Option A: Use a Managed PostgreSQL Service (Recommended)
+Use a managed PostgreSQL provider:
 
-Create a MySQL-compatible version of your database module. Update `config.py`:
+| Provider | Free Tier | URL |
+|----------|-----------|-----|
+| Neon | 512 MB | https://neon.tech |
+| Supabase | 500 MB | https://supabase.com |
+| ElephantSQL | 20 MB | https://www.elephantsql.com |
+| Railway | $5 credit | https://railway.app |
 
-```python
-# Database settings for MySQL
-DB_HOST = os.environ.get('DB_HOST', 'localhost')
-DB_NAME = os.environ.get('DB_NAME', 'aiblog_prod')
-DB_USER = os.environ.get('DB_USER', 'aiblog_user')
-DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
+#### Option B: Install PostgreSQL on VPS
+If you have root/sudo access (VPS plan):
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+# Start PostgreSQL
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Create database and user
+sudo -u postgres psql
 ```
 
-### 4.3 Create Tables via phpMyAdmin
+```sql
+CREATE DATABASE ai_blog;
+CREATE USER aiblog_user WITH ENCRYPTED PASSWORD 'your-strong-password';
+GRANT ALL PRIVILEGES ON DATABASE ai_blog TO aiblog_user;
+\q
+```
 
-1. In hPanel, go to **Databases → phpMyAdmin**
-2. Select your database
-3. Run the following SQL:
+#### Option C: Use MySQL Instead
+If you must use Hostinger's MySQL, you'll need to:
+1. Modify `database.py` to use `mysql-connector-python` or `pymysql`
+2. Update SQL syntax (see Section 4.4)
+
+### 4.2 Create PostgreSQL Database
+
+**Using Neon (Recommended for Hostinger):**
+
+1. Sign up at https://neon.tech
+2. Create a new project
+3. Copy the connection string:
+   ```
+   postgresql://username:password@ep-xxx.region.aws.neon.tech/ai_blog?sslmode=require
+   ```
+4. Parse into environment variables:
+   - `DB_HOST`: `ep-xxx.region.aws.neon.tech`
+   - `DB_PORT`: `5432`
+   - `DB_NAME`: `ai_blog`
+   - `DB_USER`: `username`
+   - `DB_PASSWORD`: `password`
+
+### 4.3 Run the Schema
+
+Connect to your PostgreSQL database and run the schema:
+
+```bash
+# Using psql with connection string
+psql "postgresql://user:pass@host:5432/ai_blog" -f schema.sql
+
+# Or using environment variables
+PGPASSWORD=your_password psql -h your_host -U your_user -d ai_blog -f schema.sql
+```
+
+**Schema creates:**
+- `AITool` - AI tools (ChatGPT, Claude, etc.)
+- `Users` - User accounts
+- `Post` - Blog posts
+- `Subscription` - User subscriptions to tools
+- `Comment` - Post comments
+- Performance indexes
+- Initial AI tool seed data
+
+### 4.4 MySQL Alternative (If Required)
+
+If you cannot use PostgreSQL, create a MySQL version of `database.py`:
+
+<details>
+<summary>Click to expand MySQL schema</summary>
 
 ```sql
--- Users Table
+-- MySQL Schema (if PostgreSQL unavailable)
 CREATE TABLE Users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -200,57 +264,62 @@ CREATE TABLE Users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- AITool Table
 CREATE TABLE AITool (
     tool_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    slug VARCHAR(50) NOT NULL UNIQUE,
+    slug VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
-    icon_url VARCHAR(255),
-    api_provider VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    icon_url VARCHAR(500),
+    api_provider VARCHAR(50)
 );
 
--- Post Table
 CREATE TABLE Post (
     postid INT AUTO_INCREMENT PRIMARY KEY,
-    Title VARCHAR(255) NOT NULL,
-    Content TEXT NOT NULL,
-    Category VARCHAR(100) NOT NULL,
-    tool_id INT,
+    Title VARCHAR(500) NOT NULL,
+    Content TEXT,
+    Category VARCHAR(100),
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    tool_id INT,
     FOREIGN KEY (tool_id) REFERENCES AITool(tool_id)
 );
 
--- Subscription Table
 CREATE TABLE Subscription (
     subscription_id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     tool_id INT NOT NULL,
     subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES Users(user_id),
-    FOREIGN KEY (tool_id) REFERENCES AITool(tool_id),
-    UNIQUE KEY unique_subscription (user_id, tool_id)
+    FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tool_id) REFERENCES AITool(tool_id) ON DELETE CASCADE,
+    UNIQUE KEY (user_id, tool_id)
 );
 
--- Comment Table
 CREATE TABLE Comment (
     commentid INT AUTO_INCREMENT PRIMARY KEY,
     postid INT NOT NULL,
     content TEXT NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (postid) REFERENCES Post(postid)
+    is_spam BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (postid) REFERENCES Post(postid) ON DELETE CASCADE
 );
 
--- Insert AI Tools
+-- Seed AI Tools
 INSERT INTO AITool (name, slug, description, icon_url, api_provider) VALUES
-('ChatGPT (GPT-4o)', 'chatgpt', 'OpenAI''s flagship model - quick, well-researched drafts.', 'bi-chat-dots-fill', 'OpenAI'),
-('Claude 3.5 Sonnet', 'claude', 'Anthropic''s advanced AI - nuanced, long-form content.', 'bi-cpu-fill', 'Anthropic'),
-('Gemini 1.5 Pro', 'gemini', 'Google''s multimodal AI - data-driven research.', 'bi-google', 'Google'),
-('Llama 3.1 405B', 'llama', 'Meta''s open-source powerhouse - technical content.', 'bi-code-slash', 'Meta'),
-('Mistral Large 2', 'mistral', 'European AI excellence - fast and multilingual.', 'bi-wind', 'Mistral AI'),
-('Jasper', 'jasper', 'Marketing AI specialist - brand-voice content.', 'bi-megaphone-fill', 'Jasper AI');
+('ChatGPT (GPT-4o)', 'chatgpt', 'OpenAI''s most advanced language model', '/static/icons/chatgpt.png', 'openai'),
+('Claude 3.5 Sonnet', 'claude', 'Anthropic''s thoughtful AI assistant', '/static/icons/claude.png', 'anthropic'),
+('Gemini 1.5 Pro', 'gemini', 'Google''s multimodal AI model', '/static/icons/gemini.png', 'google'),
+('Llama 3.1 405B', 'llama', 'Meta''s open-source large language model', '/static/icons/llama.png', 'together'),
+('Mistral Large 2', 'mistral', 'European AI with multilingual capabilities', '/static/icons/mistral.png', 'mistral'),
+('Jasper', 'jasper', 'AI-powered marketing content platform', '/static/icons/jasper.png', 'jasper');
 ```
+
+**Required code changes for MySQL:**
+- Change `psycopg2` to `mysql-connector-python` in `requirements.txt`
+- Update `database.py` connection code
+- Replace `%s` placeholders (same for MySQL)
+- Replace `CURRENT_DATE - INTERVAL '%s days'` with `DATE_SUB(NOW(), INTERVAL %s DAY)`
+- Replace `RETURNING user_id` with `cursor.lastrowid`
+
+</details>
 
 ---
 
@@ -297,9 +366,6 @@ pip install --upgrade pip
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Install MySQL connector (for MySQL database)
-pip install mysql-connector-python pymysql
 ```
 
 ---
@@ -328,11 +394,20 @@ SECRET_KEY=paste-your-64-character-secret-key-here
 FLASK_ENV=production
 DEBUG=False
 
-# MySQL Database (from hPanel)
-DB_HOST=localhost
-DB_NAME=u123456789_aiblog
-DB_USER=u123456789_aiblog
+# PostgreSQL Database
+# Option 1: Managed PostgreSQL (Neon, Supabase, etc.)
+DB_HOST=ep-xxx.region.aws.neon.tech
+DB_PORT=5432
+DB_NAME=ai_blog
+DB_USER=your_db_user
 DB_PASSWORD=your-database-password-here
+
+# Option 2: Local PostgreSQL (if installed on VPS)
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_NAME=ai_blog
+# DB_USER=aiblog_user
+# DB_PASSWORD=your-database-password-here
 
 # AI Provider API Keys
 OPENAI_API_KEY=sk-prod-your-openai-key-here
@@ -493,19 +568,20 @@ PassengerPython /home/username/domains/yourdomain.com/public_html/app/.venv/bin/
 1. In the Python app settings, find **Environment variables**
 2. Add each variable:
 
-| Variable            | Value               |
-| ------------------- | ------------------- |
-| `SECRET_KEY`        | your-64-char-secret |
-| `DB_HOST`           | localhost           |
-| `DB_NAME`           | u123456789_aiblog   |
-| `DB_USER`           | u123456789_aiblog   |
-| `DB_PASSWORD`       | your-db-password    |
-| `OPENAI_API_KEY`    | sk-...              |
-| `ANTHROPIC_API_KEY` | sk-ant-...          |
-| `GOOGLE_API_KEY`    | AIza...             |
-| `TOGETHER_API_KEY`  | ...                 |
-| `MISTRAL_API_KEY`   | ...                 |
-| `JASPER_API_KEY`    | ...                 |
+| Variable            | Value                        |
+| ------------------- | ---------------------------- |
+| `SECRET_KEY`        | your-64-char-secret          |
+| `DB_HOST`           | your-postgres-host           |
+| `DB_PORT`           | 5432                         |
+| `DB_NAME`           | ai_blog                      |
+| `DB_USER`           | your_db_user                 |
+| `DB_PASSWORD`       | your-db-password             |
+| `OPENAI_API_KEY`    | sk-...                       |
+| `ANTHROPIC_API_KEY` | sk-ant-...                   |
+| `GOOGLE_API_KEY`    | AIza...                      |
+| `TOGETHER_API_KEY`  | ...                          |
+| `MISTRAL_API_KEY`   | ...                          |
+| `JASPER_API_KEY`    | ...                          |
 
 3. Click **Restart** to apply changes
 
@@ -629,19 +705,33 @@ chmod 600 .env
 ### 10.2 Database Connection Error
 
 ```bash
-# Test database connection
+# Test PostgreSQL connection
 source .venv/bin/activate
 python3 -c "
-import mysql.connector
-conn = mysql.connector.connect(
-    host='localhost',
-    user='your_db_user',
-    password='your_db_password',
-    database='your_db_name'
-)
-print('Connected!' if conn.is_connected() else 'Failed')
+import psycopg2
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+try:
+    conn = psycopg2.connect(
+        host=os.getenv('DB_HOST'),
+        port=os.getenv('DB_PORT', 5432),
+        database=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD')
+    )
+    print('Connected successfully!')
+    conn.close()
+except Exception as e:
+    print(f'Connection failed: {e}')
 "
 ```
+
+**Common PostgreSQL issues:**
+- SSL required: Add `?sslmode=require` to connection or set in code
+- IP whitelist: Ensure your server IP is allowed (for managed PostgreSQL)
+- Wrong credentials: Double-check host, user, password in .env
 
 ### 10.3 Module Not Found Error
 
@@ -716,8 +806,45 @@ ssh -p 65002 username@yourdomain.com
 - [ ] Database password is strong
 - [ ] `DEBUG=False` in production
 - [ ] hPanel 2FA enabled
+- [ ] PostgreSQL user has minimal privileges (not superuser)
+- [ ] Database connection uses SSL (for remote databases)
 
 ---
 
-_Deployment Guide for AI Blog Platform on Hostinger Cloud Startup_  
-_Last Updated: January 24, 2026_
+## Appendix: Project File Structure
+
+```
+AiBlog/
+├── app.py              # Main Flask application
+├── config.py           # Configuration (reads from .env)
+├── database.py         # PostgreSQL database operations
+├── db.py               # Legacy database connection
+├── schema.sql          # PostgreSQL schema (run once to set up DB)
+├── requirements.txt    # Python dependencies
+├── .env                # Environment variables (DO NOT COMMIT)
+├── .env.example        # Template for .env
+├── .gitignore          # Git ignore rules
+├── static/
+│   └── styles.css      # Custom CSS
+├── templates/
+│   ├── base.html       # Base template
+│   ├── index.html      # Home page
+│   ├── tool.html       # AI tool page
+│   ├── post.html       # Single post page
+│   ├── login.html      # Login form
+│   ├── register.html   # Registration form
+│   ├── feed.html       # User's subscribed feed
+│   ├── subscriptions.html  # Manage subscriptions
+│   ├── 404.html        # Not found page
+│   └── 500.html        # Server error page
+└── docs/
+    ├── DEPLOYMENT_GUIDE.md      # This file
+    ├── PRODUCT_DOCUMENTATION.md # Feature documentation
+    └── ENHANCEMENT_SUGGESTIONS.md  # Future improvements
+```
+
+---
+
+_Deployment Guide for AI Blog Platform_  
+_Database: PostgreSQL | Host: Hostinger Cloud Startup (or any VPS)_  
+_Last Updated: January 27, 2026_

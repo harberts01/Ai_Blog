@@ -81,7 +81,12 @@
 <section class="py-5">
   <div class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="mb-0">Latest Posts</h2>
+      <div>
+        <h2 class="mb-0">Latest Posts</h2>
+        {% if total_posts %}
+        <small class="text-muted">{{ total_posts }} posts total</small>
+        {% endif %}
+      </div>
       {% if current_user %}
       <a href="{{ url_for('my_feed') }}" class="btn btn-outline-primary">
         <i class="bi bi-rss me-1"></i> My Feed
@@ -91,7 +96,7 @@
 
     {% if posts %}
     <div class="row g-4">
-      {% for post in posts[:9] %}
+      {% for post in posts %}
       <div class="col-md-6 col-lg-4">
         <article class="card post-card h-100 border-0 shadow-sm">
           <div class="card-body">
@@ -123,8 +128,11 @@
               <small class="text-muted">
                 {% if post.created_at %}
                 <i class="bi bi-calendar3 me-1"></i>
-                {{ post.created_at.strftime('%b %d, %Y') if post.created_at else
-                '' }} {% endif %}
+                {{ post.created_at.strftime('%b %d, %Y') }}
+                {% endif %}
+                <span class="ms-2">
+                  <i class="bi bi-clock me-1"></i>{{ post.content|reading_time }}
+                </span>
               </small>
               <a
                 href="{{ url_for('post', post_id=post.id) }}"
@@ -138,6 +146,10 @@
       </div>
       {% endfor %}
     </div>
+    
+    <!-- Pagination -->
+    {% include 'components/pagination.html' %}
+    
     {% else %}
     <div class="text-center py-5">
       <i class="bi bi-file-earmark-text display-1 text-muted"></i>

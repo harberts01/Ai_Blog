@@ -1,6 +1,9 @@
 {% extends "base.html" %} {% block title %}{{ post.title }}{% endblock %} {%
 block description %}{{ post.content|striptags|truncate(160) }}{% endblock %} {%
 block content %}
+<!-- Reading Progress Bar -->
+<div class="reading-progress" id="readingProgress"></div>
+
 <article class="py-5">
   <div class="container">
     <div class="row justify-content-center">
@@ -40,7 +43,11 @@ block content %}
           <div class="text-muted mb-4">
             {% if post.created_at %}
             <i class="bi bi-calendar3 me-1"></i>
-            {{ post.created_at.strftime('%B %d, %Y') }} {% endif %}
+            {{ post.created_at.strftime('%B %d, %Y') }}
+            {% endif %}
+            <span class="mx-2">•</span>
+            <i class="bi bi-clock me-1"></i>
+            {{ post.content|reading_time }}
             <span class="mx-2">•</span>
             <i class="bi bi-robot me-1"></i>
             AI Generated
@@ -96,6 +103,7 @@ block content %}
                 action="{{ url_for('add_comment', post_id=post.id) }}"
                 method="POST"
               >
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="mb-3">
                   <textarea
                     name="content"
@@ -160,4 +168,29 @@ block content %}
     </div>
   </div>
 </article>
+
+<!-- Reading Progress Script -->
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const progressBar = document.getElementById('readingProgress');
+    const article = document.querySelector('.post-content');
+    
+    if (progressBar && article) {
+      window.addEventListener('scroll', function() {
+        const articleRect = article.getBoundingClientRect();
+        const articleTop = window.scrollY + articleRect.top;
+        const articleHeight = article.offsetHeight;
+        const windowHeight = window.innerHeight;
+        const scrolled = window.scrollY;
+        
+        // Calculate progress within the article
+        const start = articleTop - windowHeight / 2;
+        const end = articleTop + articleHeight - windowHeight / 2;
+        const progress = Math.min(100, Math.max(0, ((scrolled - start) / (end - start)) * 100));
+        
+        progressBar.style.width = progress + '%';
+      });
+    }
+  });
+</script>
 {% endblock %}

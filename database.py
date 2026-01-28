@@ -2,22 +2,23 @@
 Database Module
 Handles all database connections and operations
 """
-import pyodbc
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from config import Config
 
 
 def get_connection():
     """Create and return a database connection"""
-    connection_string = (
-        f'DRIVER={{SQL Server}};'
-        f'SERVER={Config.DB_SERVER};'
-        f'DATABASE={Config.DB_NAME};'
-        f'Trusted_Connection=yes;'
-    )
     try:
-        conn = pyodbc.connect(connection_string)
+        conn = psycopg2.connect(
+            host=Config.DB_HOST,
+            port=Config.DB_PORT,
+            database=Config.DB_NAME,
+            user=Config.DB_USER,
+            password=Config.DB_PASSWORD
+        )
         return conn
-    except pyodbc.Error as e:
+    except psycopg2.Error as e:
         print(f'Database connection failed: {e}')
         return None
 
@@ -63,7 +64,7 @@ def get_tool_by_slug(slug):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT tool_id, name, slug, description, icon_url, api_provider FROM AITool WHERE slug = ?", 
+                "SELECT tool_id, name, slug, description, icon_url, api_provider FROM AITool WHERE slug = %s", 
                 (slug,)
             )
             row = cursor.fetchone()
@@ -89,7 +90,7 @@ def get_tool_by_id(tool_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT tool_id, name, slug, description, icon_url FROM AITool WHERE tool_id = ?", 
+                "SELECT tool_id, name, slug, description, icon_url FROM AITool WHERE tool_id = %s", 
                 (tool_id,)
             )
             row = cursor.fetchone()
@@ -108,21 +109,40 @@ def get_tool_by_id(tool_id):
 
 # ============== Posts ==============
 
-def get_all_posts():
-    """Fetch all blog posts with tool information"""
+POSTS_PER_PAGE = 12  # Default pagination size
+
+
+def search_posts(query, page=1, per_page=POSTS_PER_PAGE):
+    """Search posts using PostgreSQL full-text search"""
     connection = get_connection()
     if not connection:
-        return []
+        return [], 0
     try:
+        offset = (page - 1) * per_page
+        # Escape special characters and prepare search query
+        search_query = ' & '.join(query.split())  # Convert spaces to AND
+        
         with connection.cursor() as cursor:
+            # Get total count of matching posts
+            cursor.execute("""
+                SELECT COUNT(*) FROM Post 
+                WHERE to_tsvector('english', Title || ' ' || Content) @@ plainto_tsquery('english', %s)
+            """, (query,))
+            total = cursor.fetchone()[0]
+            
+            # Get paginated search results with ranking
             cursor.execute("""
                 SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
-                       t.name as tool_name, t.slug as tool_slug
+                       t.name as tool_name, t.slug as tool_slug,
+                       ts_rank(to_tsvector('english', p.Title || ' ' || p.Content), 
+                               plainto_tsquery('english', %s)) as rank
                 FROM Post p
                 LEFT JOIN AITool t ON p.tool_id = t.tool_id
-                ORDER BY p.CreatedAt DESC
-            """)
-            return [
+                WHERE to_tsvector('english', p.Title || ' ' || p.Content) @@ plainto_tsquery('english', %s)
+                ORDER BY rank DESC, p.CreatedAt DESC
+                LIMIT %s OFFSET %s
+            """, (query, query, per_page, offset))
+            posts = [
                 {
                     'id': row[0], 
                     'title': row[1], 
@@ -135,26 +155,33 @@ def get_all_posts():
                 } 
                 for row in cursor.fetchall()
             ]
+            return posts, total
     finally:
         connection.close()
 
 
-def get_posts_by_tool(tool_id):
-    """Fetch all posts for a specific AI tool"""
+def get_all_posts(page=1, per_page=POSTS_PER_PAGE):
+    """Fetch paginated blog posts with tool information"""
     connection = get_connection()
     if not connection:
-        return []
+        return [], 0
     try:
+        offset = (page - 1) * per_page
         with connection.cursor() as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) FROM Post")
+            total = cursor.fetchone()[0]
+            
+            # Get paginated posts
             cursor.execute("""
                 SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
                        t.name as tool_name, t.slug as tool_slug
                 FROM Post p
                 LEFT JOIN AITool t ON p.tool_id = t.tool_id
-                WHERE p.tool_id = ?
                 ORDER BY p.CreatedAt DESC
-            """, (tool_id,))
-            return [
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            posts = [
                 {
                     'id': row[0], 
                     'title': row[1], 
@@ -167,6 +194,47 @@ def get_posts_by_tool(tool_id):
                 } 
                 for row in cursor.fetchall()
             ]
+            return posts, total
+    finally:
+        connection.close()
+
+
+def get_posts_by_tool(tool_id, page=1, per_page=POSTS_PER_PAGE):
+    """Fetch paginated posts for a specific AI tool"""
+    connection = get_connection()
+    if not connection:
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            # Get total count for this tool
+            cursor.execute("SELECT COUNT(*) FROM Post WHERE tool_id = %s", (tool_id,))
+            total = cursor.fetchone()[0]
+            
+            # Get paginated posts
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
+                       t.name as tool_name, t.slug as tool_slug
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE p.tool_id = %s
+                ORDER BY p.CreatedAt DESC
+                LIMIT %s OFFSET %s
+            """, (tool_id, per_page, offset))
+            posts = [
+                {
+                    'id': row[0], 
+                    'title': row[1], 
+                    'content': row[2], 
+                    'category': row[3],
+                    'created_at': row[4],
+                    'tool_id': row[5],
+                    'tool_name': row[6],
+                    'tool_slug': row[7]
+                } 
+                for row in cursor.fetchall()
+            ]
+            return posts, total
     finally:
         connection.close()
 
@@ -183,7 +251,7 @@ def get_post_by_id(post_id):
                        t.name as tool_name, t.slug as tool_slug
                 FROM Post p
                 LEFT JOIN AITool t ON p.tool_id = t.tool_id
-                WHERE p.postid = ?
+                WHERE p.postid = %s
             """, (post_id,))
             row = cursor.fetchone()
             if row:
@@ -210,7 +278,7 @@ def insert_post(title, content, category, tool_id=None):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Post (Title, Content, Category, tool_id) VALUES (?, ?, ?, ?)",
+                "INSERT INTO Post (Title, Content, Category, tool_id) VALUES (%s, %s, %s, %s)",
                 (title, content, category, tool_id)
             )
             connection.commit()
@@ -232,8 +300,8 @@ def get_recent_posts_by_tool(tool_id, days=21):
             cursor.execute("""
                 SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt
                 FROM Post p
-                WHERE p.tool_id = ? 
-                AND p.CreatedAt >= DATEADD(day, -?, GETDATE())
+                WHERE p.tool_id = %s 
+                AND p.CreatedAt >= CURRENT_DATE - INTERVAL '%s days'
                 ORDER BY p.CreatedAt DESC
             """, (tool_id, days))
             return [
@@ -260,8 +328,8 @@ def get_recent_categories_by_tool(tool_id, days=7):
             cursor.execute("""
                 SELECT DISTINCT p.Category
                 FROM Post p
-                WHERE p.tool_id = ? 
-                AND p.CreatedAt >= DATEADD(day, -?, GETDATE())
+                WHERE p.tool_id = %s 
+                AND p.CreatedAt >= CURRENT_DATE - INTERVAL '%s days'
             """, (tool_id, days))
             return [row[0] for row in cursor.fetchall()]
     finally:
@@ -278,7 +346,7 @@ def get_user_by_email(email):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT user_id, email, password_hash, username, is_active FROM Users WHERE email = ?",
+                "SELECT user_id, email, password_hash, username, is_active FROM Users WHERE email = %s",
                 (email,)
             )
             row = cursor.fetchone()
@@ -303,7 +371,7 @@ def get_user_by_id(user_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT user_id, email, password_hash, username, is_active FROM Users WHERE user_id = ?",
+                "SELECT user_id, email, password_hash, username, is_active FROM Users WHERE user_id = %s",
                 (user_id,)
             )
             row = cursor.fetchone()
@@ -328,7 +396,7 @@ def create_user(email, password_hash, username):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Users (email, password_hash, username) OUTPUT INSERTED.user_id VALUES (?, ?, ?)",
+                "INSERT INTO Users (email, password_hash, username) VALUES (%s, %s, %s) RETURNING user_id",
                 (email, password_hash, username)
             )
             row = cursor.fetchone()
@@ -354,7 +422,7 @@ def get_user_subscriptions(user_id):
                 SELECT t.tool_id, t.name, t.slug, t.description, t.icon_url, s.subscribed_at
                 FROM Subscription s
                 JOIN AITool t ON s.tool_id = t.tool_id
-                WHERE s.user_id = ?
+                WHERE s.user_id = %s
                 ORDER BY t.name
             """, (user_id,))
             return [
@@ -380,7 +448,7 @@ def add_subscription(user_id, tool_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Subscription (user_id, tool_id) VALUES (?, ?)",
+                "INSERT INTO Subscription (user_id, tool_id) VALUES (%s, %s)",
                 (user_id, tool_id)
             )
             connection.commit()
@@ -400,7 +468,7 @@ def remove_subscription(user_id, tool_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM Subscription WHERE user_id = ? AND tool_id = ?",
+                "DELETE FROM Subscription WHERE user_id = %s AND tool_id = %s",
                 (user_id, tool_id)
             )
             connection.commit()
@@ -420,7 +488,7 @@ def is_subscribed(user_id, tool_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT 1 FROM Subscription WHERE user_id = ? AND tool_id = ?",
+                "SELECT 1 FROM Subscription WHERE user_id = %s AND tool_id = %s",
                 (user_id, tool_id)
             )
             return cursor.fetchone() is not None
@@ -428,23 +496,35 @@ def is_subscribed(user_id, tool_id):
         connection.close()
 
 
-def get_subscribed_posts(user_id):
-    """Get posts from tools the user is subscribed to"""
+def get_subscribed_posts(user_id, page=1, per_page=POSTS_PER_PAGE):
+    """Get paginated posts from tools the user is subscribed to"""
     connection = get_connection()
     if not connection:
-        return []
+        return [], 0
     try:
+        offset = (page - 1) * per_page
         with connection.cursor() as cursor:
+            # Get total count
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM Post p
+                JOIN Subscription s ON p.tool_id = s.tool_id
+                WHERE s.user_id = %s
+            """, (user_id,))
+            total = cursor.fetchone()[0]
+            
+            # Get paginated posts
             cursor.execute("""
                 SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
                        t.name as tool_name, t.slug as tool_slug
                 FROM Post p
                 JOIN AITool t ON p.tool_id = t.tool_id
                 JOIN Subscription s ON t.tool_id = s.tool_id
-                WHERE s.user_id = ?
+                WHERE s.user_id = %s
                 ORDER BY p.CreatedAt DESC
-            """, (user_id,))
-            return [
+                LIMIT %s OFFSET %s
+            """, (user_id, per_page, offset))
+            posts = [
                 {
                     'id': row[0], 
                     'title': row[1], 
@@ -457,6 +537,7 @@ def get_subscribed_posts(user_id):
                 } 
                 for row in cursor.fetchall()
             ]
+            return posts, total
     finally:
         connection.close()
 
@@ -471,7 +552,7 @@ def get_comments_by_post(post_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT commentid, content, CreatedAt FROM Comment WHERE postid = ? ORDER BY CreatedAt DESC",
+                "SELECT commentid, content, CreatedAt FROM Comment WHERE postid = %s ORDER BY CreatedAt DESC",
                 (post_id,)
             )
             return [
@@ -490,7 +571,7 @@ def insert_comment(post_id, content):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Comment (postid, content) VALUES (?, ?)",
+                "INSERT INTO Comment (postid, content) VALUES (%s, %s)",
                 (post_id, content)
             )
             connection.commit()
@@ -510,8 +591,8 @@ def delete_old_spam_comments(days=30):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM Comment WHERE is_spam = 1 AND CreatedAt < DATEADD(day, ?, GETDATE())",
-                (-days,)
+                "DELETE FROM Comment WHERE is_spam = TRUE AND CreatedAt < CURRENT_DATE - INTERVAL '%s days'",
+                (days,)
             )
             deleted_count = cursor.rowcount
             connection.commit()
