@@ -91,3 +91,6 @@ temp/
 *.temp
 *.bak
 *.backup
+
+# Documentation (generated)
+docs/

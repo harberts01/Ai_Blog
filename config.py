@@ -116,18 +116,13 @@ class Config:
             'name': 'Llama 3.1 405B',
             'provider': 'together',
             'model': 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo',
-            'prompt_style': 'technical, logic-driven, precise, with open-source transparency'
+            'prompt_style': 'technical, logic-driven, precise, with open-source transparency',
+            'coming_soon': True
         },
         'grok': {
             'name': 'Grok 3',
             'provider': 'xai',
             'model': 'grok-3',
             'prompt_style': 'witty, irreverent, truth-seeking with a sense of humor'
-        },
-        'jasper': {
-            'name': 'Jasper',
-            'provider': 'jasper',
-            'model': 'jasper',
-            'prompt_style': 'marketing-focused, brand-voice aware, persuasive and engaging'
         }
     }

@@ -120,7 +120,6 @@ INSERT INTO AITool (name, slug, description, icon_url, api_provider) VALUES
     ('ChatGPT (GPT-4o)', 'chatgpt', 'OpenAI''s most advanced language model', '/static/icons/chatgpt.png', 'openai'),
     ('Claude 3.5 Sonnet', 'claude', 'Anthropic''s thoughtful AI assistant', '/static/icons/claude.png', 'anthropic'),
     ('Gemini 1.5 Pro', 'gemini', 'Google''s multimodal AI model', '/static/icons/gemini.png', 'google'),
-    ('Llama 3.1 405B', 'llama', 'Meta''s open-source large language model', '/static/icons/llama.png', 'together'),
-    ('Mistral Large 2', 'mistral', 'European AI with multilingual capabilities', '/static/icons/mistral.png', 'mistral'),
-    ('Jasper', 'jasper', 'AI-powered marketing content platform', '/static/icons/jasper.png', 'jasper')
+    ('Llama 3.1 405B', 'llama', 'Meta''s open-source large language model (Coming Soon)', '/static/icons/llama.png', 'together'),
+    ('Grok 3', 'grok', 'xAI''s witty truth-seeking AI', '/static/icons/grok.png', 'xai')
 ON CONFLICT (slug) DO NOTHING;

@@ -519,15 +519,20 @@ def generate_post_for_tool(tool_slug, app=None):
     """
     _log_debug(f"Starting post generation for tool: {tool_slug}", "INFO")
     
+    tool_config = Config.AI_TOOLS.get(tool_slug, {})
+    if not tool_config:
+        _log_debug(f"Tool '{tool_slug}' not found in Config.AI_TOOLS", "ERROR")
+        return None
+    
+    # Check if tool is marked as coming soon
+    if tool_config.get('coming_soon', False):
+        _log_debug(f"Tool '{tool_slug}' is marked as Coming Soon - skipping generation", "WARNING")
+        return None
+    
     tool = db.get_tool_by_slug(tool_slug)
     if not tool:
         _log_debug(f"Tool not found in database: {tool_slug}", "ERROR")
         _log_debug(f"Available tools in config: {list(Config.AI_TOOLS.keys())}", "DEBUG")
-        return None
-    
-    tool_config = Config.AI_TOOLS.get(tool_slug, {})
-    if not tool_config:
-        _log_debug(f"Tool '{tool_slug}' found in DB but not in Config.AI_TOOLS", "ERROR")
         return None
         
     provider = tool_config.get('provider', 'openai')
@@ -648,7 +653,12 @@ def generate_all_posts(app=None):
     
     print("🔍 Checking which AI tools need to generate posts...")
     
-    for tool_slug in Config.AI_TOOLS.keys():
+    for tool_slug, tool_config in Config.AI_TOOLS.items():
+        # Skip tools marked as coming soon
+        if tool_config.get('coming_soon', False):
+            print(f"⏭️ Skipping {tool_config.get('name', tool_slug)} - Coming Soon (API waitlist)")
+            continue
+            
         tool = db.get_tool_by_slug(tool_slug)
         if not tool:
             continue
