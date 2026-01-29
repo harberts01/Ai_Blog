@@ -554,6 +554,135 @@ def update_user_email_preferences(user_id, email_notifications):
         connection.close()
 
 
+def update_user_profile(user_id, username=None, email=None):
+    """Update user profile information (username and/or email)"""
+    connection = get_connection()
+    if not connection:
+        return {'success': False, 'error': 'Database connection failed'}
+    try:
+        with connection.cursor() as cursor:
+            # Build dynamic update query
+            updates = []
+            params = []
+            
+            if username is not None:
+                # Check if username is taken by another user
+                cursor.execute(
+                    "SELECT user_id FROM Users WHERE username = %s AND user_id != %s",
+                    (username, user_id)
+                )
+                if cursor.fetchone():
+                    return {'success': False, 'error': 'Username is already taken'}
+                updates.append("username = %s")
+                params.append(username)
+            
+            if email is not None:
+                # Check if email is taken by another user
+                cursor.execute(
+                    "SELECT user_id FROM Users WHERE email = %s AND user_id != %s",
+                    (email, user_id)
+                )
+                if cursor.fetchone():
+                    return {'success': False, 'error': 'Email is already in use'}
+                updates.append("email = %s")
+                params.append(email)
+            
+            if not updates:
+                return {'success': False, 'error': 'No fields to update'}
+            
+            params.append(user_id)
+            query = f"UPDATE Users SET {', '.join(updates)} WHERE user_id = %s"
+            cursor.execute(query, params)
+            connection.commit()
+            
+            return {'success': True}
+    except Exception as e:
+        logger.error(f"Error updating user profile: {e}")
+        return {'success': False, 'error': 'Failed to update profile'}
+    finally:
+        connection.close()
+
+
+def update_user_password(user_id, new_password_hash):
+    """Update user's password"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE Users SET password_hash = %s WHERE user_id = %s",
+                (new_password_hash, user_id)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating password: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def get_user_full_profile(user_id):
+    """Get complete user profile including stats"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # Get user info
+            cursor.execute("""
+                SELECT user_id, email, username, is_active, is_admin, 
+                       email_notifications, created_at
+                FROM Users WHERE user_id = %s
+            """, (user_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            user = {
+                'id': row[0],
+                'email': row[1],
+                'username': row[2],
+                'is_active': row[3],
+                'is_admin': row[4],
+                'email_notifications': row[5],
+                'created_at': row[6]
+            }
+            
+            # Get stats
+            cursor.execute("SELECT COUNT(*) FROM Comment WHERE user_id = %s", (user_id,))
+            user['comment_count'] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM Bookmark WHERE user_id = %s", (user_id,))
+            user['bookmark_count'] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM Subscription WHERE user_id = %s", (user_id,))
+            user['subscription_count'] = cursor.fetchone()[0]
+            
+            return user
+    finally:
+        connection.close()
+
+
+def delete_user_account(user_id):
+    """Delete a user account and all associated data"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            # Delete user (cascades to comments, bookmarks, subscriptions, notifications)
+            cursor.execute("DELETE FROM Users WHERE user_id = %s", (user_id,))
+            connection.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting user account: {e}")
+        return False
+    finally:
+        connection.close()
+
+
 def create_user(email, password_hash, username):
     """Create a new user"""
     connection = get_connection()

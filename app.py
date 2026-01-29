@@ -407,7 +407,156 @@ def update_email_preferences():
     else:
         flash('Email notifications disabled.', 'info')
     
-    return redirect(url_for('subscriptions'))
+    # Redirect back to referring page (account or subscriptions)
+    next_page = request.form.get('next') or request.referrer or url_for('subscriptions')
+    return redirect(next_page)
+
+
+# ============== Account Management ==============
+
+@app.route("/account")
+@login_required
+def account():
+    """User account settings page"""
+    user = get_current_user()
+    profile = db.get_user_full_profile(user['id'])
+    return render_template("account.html", profile=profile)
+
+
+@app.route("/account/update-profile", methods=["POST"])
+@login_required
+def update_profile():
+    """Update user profile (username/email)"""
+    user = get_current_user()
+    
+    username = sanitize_input(request.form.get('username', '').strip())
+    email = request.form.get('email', '').strip().lower()
+    
+    # Validate inputs
+    errors = []
+    
+    if username and len(username) < 3:
+        errors.append('Username must be at least 3 characters')
+    if username and len(username) > 50:
+        errors.append('Username must be less than 50 characters')
+    if username and not re.match(r'^[a-zA-Z0-9_]+$', username):
+        errors.append('Username can only contain letters, numbers, and underscores')
+    
+    if email and not validate_email(email):
+        errors.append('Please enter a valid email address')
+    
+    if errors:
+        for error in errors:
+            flash(error, 'danger')
+        return redirect(url_for('account'))
+    
+    # Only update fields that changed
+    current_username = user['username']
+    current_email = user['email']
+    
+    update_username = username if username and username != current_username else None
+    update_email = email if email and email != current_email else None
+    
+    if not update_username and not update_email:
+        flash('No changes detected', 'info')
+        return redirect(url_for('account'))
+    
+    result = db.update_user_profile(user['id'], username=update_username, email=update_email)
+    
+    if result['success']:
+        flash('Profile updated successfully!', 'success')
+        # Update session with new info
+        if update_username:
+            session['username'] = update_username
+    else:
+        flash(result.get('error', 'Failed to update profile'), 'danger')
+    
+    return redirect(url_for('account'))
+
+
+@app.route("/account/change-password", methods=["POST"])
+@login_required
+def change_password():
+    """Change user password"""
+    user = get_current_user()
+    
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    
+    # Get full user with password hash
+    full_user = db.get_user_by_email(user['email'])
+    if not full_user:
+        flash('User not found', 'danger')
+        return redirect(url_for('account'))
+    
+    # Verify current password
+    if not check_password_hash(full_user['password_hash'], current_password):
+        flash('Current password is incorrect', 'danger')
+        return redirect(url_for('account'))
+    
+    # Validate new password
+    if len(new_password) < 8:
+        flash('New password must be at least 8 characters', 'danger')
+        return redirect(url_for('account'))
+    
+    # Check password strength
+    has_upper = any(c.isupper() for c in new_password)
+    has_lower = any(c.islower() for c in new_password)
+    has_digit = any(c.isdigit() for c in new_password)
+    
+    if not (has_upper and has_lower and has_digit):
+        flash('Password must contain uppercase, lowercase, and a number', 'danger')
+        return redirect(url_for('account'))
+    
+    if new_password != confirm_password:
+        flash('New passwords do not match', 'danger')
+        return redirect(url_for('account'))
+    
+    if current_password == new_password:
+        flash('New password must be different from current password', 'danger')
+        return redirect(url_for('account'))
+    
+    # Update password
+    new_hash = generate_password_hash(new_password)
+    if db.update_user_password(user['id'], new_hash):
+        logger.info(f"Password changed for user: {user['email']}")
+        flash('Password changed successfully!', 'success')
+    else:
+        flash('Failed to change password', 'danger')
+    
+    return redirect(url_for('account'))
+
+
+@app.route("/account/delete", methods=["POST"])
+@login_required
+def delete_account():
+    """Delete user account"""
+    user = get_current_user()
+    
+    # Require password confirmation
+    password = request.form.get('password', '')
+    confirm_text = request.form.get('confirm_delete', '')
+    
+    if confirm_text != 'DELETE':
+        flash('Please type DELETE to confirm account deletion', 'danger')
+        return redirect(url_for('account'))
+    
+    # Verify password
+    full_user = db.get_user_by_email(user['email'])
+    if not full_user or not check_password_hash(full_user['password_hash'], password):
+        flash('Incorrect password', 'danger')
+        return redirect(url_for('account'))
+    
+    # Delete account
+    if db.delete_user_account(user['id']):
+        logger.info(f"Account deleted: {user['email']}")
+        logout_user()
+        flash('Your account has been deleted. We\'re sorry to see you go!', 'info')
+        return redirect(url_for('home'))
+    else:
+        flash('Failed to delete account', 'danger')
+        return redirect(url_for('account'))
 
 
 @app.route("/feed")
