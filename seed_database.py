@@ -670,6 +670,39 @@ SAMPLE_COMMENTS = [
     "Been struggling with this for days. Your guide solved my problem in minutes!",
 ]
 
+# More detailed comments for thorough testing of admin user detail view
+DETAILED_TEST_COMMENTS = {
+    "johndoe": [
+        {"content": "This is my first comment on this blog. Really enjoying the content!", "is_spam": False},
+        {"content": "I've been using ChatGPT for 6 months now and this guide covers everything I wish I knew when starting.", "is_spam": False},
+        {"content": "Quick question - does this approach work with the API as well, or just the web interface?", "is_spam": False},
+        {"content": "Following up on my previous comment - I figured it out! Thanks for the clear explanations.", "is_spam": False},
+        {"content": "Would love to see a comparison between Claude and ChatGPT for coding tasks.", "is_spam": False},
+        {"content": "The code examples are super helpful. Already implemented the fibonacci function in my project.", "is_spam": False},
+        {"content": "One small correction: in the section about prompting, you might want to mention temperature settings.", "is_spam": False},
+        {"content": "Shared this with my team - we're all learning together now!", "is_spam": False},
+    ],
+    "janedoe": [
+        {"content": "As a designer, I find the Midjourney tips especially useful. Great work!", "is_spam": False},
+        {"content": "The artifact feature in Claude has completely changed my workflow.", "is_spam": False},
+        {"content": "I appreciate how you break down complex topics into digestible pieces.", "is_spam": False},
+        {"content": "Has anyone tried combining multiple AI tools for a single project? Would love to hear experiences.", "is_spam": False},
+        {"content": "This helped me explain AI concepts to my non-technical colleagues. Thank you!", "is_spam": False},
+    ],
+    "techwriter": [
+        {"content": "From a technical writing perspective, these AI tools have transformed my documentation process.", "is_spam": False},
+        {"content": "The multimodal capabilities section was particularly insightful. Looking forward to more content!", "is_spam": False},
+        {"content": "I use GitHub Copilot daily and can confirm these tips really improve the suggestions.", "is_spam": False},
+        {"content": "Just discovered this blog today. Already bookmarked several articles!", "is_spam": False},
+        {"content": "Pro tip for others: combining Copilot with Copilot Chat is a game changer for code reviews.", "is_spam": False},
+        {"content": "The v6 Midjourney guide was timely - I was just about to upgrade. Perfect timing!", "is_spam": False},
+        {"content": "Could you cover how to use AI tools for API documentation in a future post?", "is_spam": False},
+        {"content": "Minor feedback: some code blocks could use syntax highlighting for readability.", "is_spam": False},
+        {"content": "This community is amazing. Love how helpful everyone is in the comments!", "is_spam": False},
+        {"content": "Been recommending this blog to all my developer friends.", "is_spam": False},
+    ]
+}
+
 # ============================================
 # Seeder Functions
 # ============================================
@@ -751,31 +784,67 @@ def seed_posts(cursor, tools):
     return post_ids
 
 def seed_comments(cursor, post_ids, user_ids):
-    """Insert sample comments."""
+    """Insert sample comments with detailed test data for admin user detail view."""
     print("💬 Seeding comments...")
     
-    # Only use non-admin users for comments
-    commenter_ids = user_ids[1:]  # Skip admin
+    # Create a mapping of usernames to user_ids
+    cursor.execute("SELECT user_id, username FROM Users")
+    user_map = {row[1]: row[0] for row in cursor.fetchall()}
     
-    for post_id in post_ids:
-        num_comments = random.randint(2, 5)
+    comment_count = 0
+    
+    # First, add detailed comments for specific users (for testing admin user detail view)
+    for username, comments in DETAILED_TEST_COMMENTS.items():
+        if username not in user_map:
+            continue
+            
+        user_id = user_map[username]
         
-        for _ in range(num_comments):
-            user_id = random.choice(commenter_ids)
-            content = random.choice(SAMPLE_COMMENTS)
+        # Distribute comments across different posts
+        for i, comment_data in enumerate(comments):
+            post_id = post_ids[i % len(post_ids)]  # Cycle through posts
+            
+            # Vary the timestamps for realistic testing
+            days_ago = random.randint(0, 30)
             
             cursor.execute("""
-                INSERT INTO Comment (postid, user_id, content, is_spam, parent_id)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO Comment (postid, user_id, content, is_spam, parent_id, CreatedAt)
+                VALUES (%s, %s, %s, %s, %s, NOW() - INTERVAL '%s days')
+            """, (
+                post_id,
+                user_id,
+                comment_data["content"],
+                comment_data["is_spam"],
+                None,
+                days_ago
+            ))
+            comment_count += 1
+    
+    # Also add some random comments using the simple SAMPLE_COMMENTS list
+    commenter_ids = [uid for uid in user_ids if uid != user_map.get('admin')]
+    
+    for post_id in post_ids:
+        num_extra_comments = random.randint(1, 3)
+        
+        for _ in range(num_extra_comments):
+            user_id = random.choice(commenter_ids)
+            content = random.choice(SAMPLE_COMMENTS)
+            days_ago = random.randint(0, 45)
+            
+            cursor.execute("""
+                INSERT INTO Comment (postid, user_id, content, is_spam, parent_id, CreatedAt)
+                VALUES (%s, %s, %s, %s, %s, NOW() - INTERVAL '%s days')
             """, (
                 post_id,
                 user_id,
                 content,
                 False,
-                None
+                None,
+                days_ago
             ))
+            comment_count += 1
     
-    print(f"   Created comments for {len(post_ids)} posts")
+    print(f"   Created {comment_count} comments across {len(post_ids)} posts")
 
 def seed_subscriptions(cursor, user_ids, tools):
     """Create subscriptions for users."""

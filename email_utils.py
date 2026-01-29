@@ -1,6 +1,19 @@
 """
 Email Utilities
 Handles sending email notifications for the AI Blog platform
+
+Supports multiple SMTP providers:
+- Gmail (requires App Password)
+- Outlook/Office365
+- SendGrid
+- Mailgun
+- AWS SES
+- Yahoo
+- Zoho
+- Postmark
+- Custom SMTP
+
+Set MAIL_PROVIDER env var to use presets, or configure MAIL_SERVER/MAIL_PORT manually.
 """
 import smtplib
 import logging
@@ -10,6 +23,71 @@ from threading import Thread
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+
+def get_smtp_settings():
+    """
+    Get SMTP settings based on provider preset or custom configuration.
+    
+    Returns:
+        dict: SMTP configuration settings
+    """
+    provider = Config.MAIL_PROVIDER.lower() if Config.MAIL_PROVIDER else 'custom'
+    
+    # If using a preset provider
+    if provider in Config.SMTP_PROVIDERS:
+        preset = Config.SMTP_PROVIDERS[provider]
+        settings = {
+            'server': preset['server'],
+            'port': preset['port'],
+            'use_tls': preset['use_tls'],
+            'use_ssl': preset.get('use_ssl', False),
+        }
+        
+        # Handle region substitution for AWS SES
+        if provider == 'ses':
+            region = Config.AWS_SES_REGION or 'us-east-1'
+            settings['server'] = settings['server'].replace('{region}', region)
+        
+        # Allow env var overrides
+        if Config.MAIL_SERVER:
+            settings['server'] = Config.MAIL_SERVER
+        if Config.MAIL_PORT:
+            settings['port'] = Config.MAIL_PORT
+            
+        return settings
+    
+    # Custom configuration
+    return {
+        'server': Config.MAIL_SERVER or 'smtp.gmail.com',
+        'port': Config.MAIL_PORT or 587,
+        'use_tls': Config.MAIL_USE_TLS,
+        'use_ssl': Config.MAIL_USE_SSL,
+    }
+
+
+def get_smtp_credentials():
+    """
+    Get SMTP credentials based on provider.
+    Some providers have special username requirements.
+    
+    Returns:
+        tuple: (username, password)
+    """
+    provider = Config.MAIL_PROVIDER.lower() if Config.MAIL_PROVIDER else 'custom'
+    username = Config.MAIL_USERNAME
+    password = Config.MAIL_PASSWORD
+    
+    # SendGrid uses 'apikey' as username
+    if provider == 'sendgrid' and Config.SENDGRID_API_KEY:
+        username = 'apikey'
+        password = Config.SENDGRID_API_KEY
+    
+    # Mailgun uses API key as password
+    elif provider == 'mailgun' and Config.MAILGUN_API_KEY:
+        password = Config.MAILGUN_API_KEY
+    
+    return username, password
 
 
 def send_email_async(app, msg, recipients):
@@ -24,29 +102,49 @@ def _send_email(msg, recipients):
         logger.info("Email disabled - would have sent to: %s", recipients)
         return False
     
-    if not Config.MAIL_USERNAME or not Config.MAIL_PASSWORD:
+    username, password = get_smtp_credentials()
+    
+    if not username or not password:
         logger.warning("Email credentials not configured")
         return False
     
+    settings = get_smtp_settings()
+    
     try:
         # Connect to SMTP server
-        if Config.MAIL_USE_TLS:
-            server = smtplib.SMTP(Config.MAIL_SERVER, Config.MAIL_PORT)
-            server.starttls()
+        if settings['use_ssl']:
+            server = smtplib.SMTP_SSL(settings['server'], settings['port'])
         else:
-            server = smtplib.SMTP_SSL(Config.MAIL_SERVER, Config.MAIL_PORT)
+            server = smtplib.SMTP(settings['server'], settings['port'])
+            if settings['use_tls']:
+                server.starttls()
         
-        server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
+        server.login(username, password)
         
         # Send to each recipient
         for recipient in recipients:
-            msg['To'] = recipient
-            server.sendmail(Config.MAIL_USERNAME, recipient, msg.as_string())
+            msg_copy = MIMEMultipart('alternative')
+            msg_copy['Subject'] = msg['Subject']
+            msg_copy['From'] = msg['From']
+            msg_copy['To'] = recipient
+            
+            # Copy attachments
+            for part in msg.walk():
+                if part.get_content_type() in ['text/plain', 'text/html']:
+                    msg_copy.attach(MIMEText(part.get_payload(), part.get_content_subtype()))
+            
+            server.sendmail(username, recipient, msg_copy.as_string())
             logger.info("Email sent to: %s", recipient)
         
         server.quit()
         return True
         
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error("SMTP authentication failed. Check credentials. Provider: %s", Config.MAIL_PROVIDER)
+        return False
+    except smtplib.SMTPException as e:
+        logger.error("SMTP error: %s", str(e))
+        return False
     except Exception as e:
         logger.error("Failed to send email: %s", str(e))
         return False
@@ -214,3 +312,75 @@ def _get_excerpt(content, max_length=200):
     if len(text) > max_length:
         text = text[:max_length].rsplit(' ', 1)[0] + '...'
     return text
+
+
+def test_email_connection():
+    """
+    Test SMTP connection without sending an email.
+    Useful for verifying configuration.
+    
+    Returns:
+        dict: Result with success status and message
+    """
+    if not Config.MAIL_ENABLED:
+        return {'success': False, 'message': 'Email is disabled (MAIL_ENABLED=false)'}
+    
+    username, password = get_smtp_credentials()
+    
+    if not username or not password:
+        return {'success': False, 'message': 'Email credentials not configured'}
+    
+    settings = get_smtp_settings()
+    provider = Config.MAIL_PROVIDER or 'custom'
+    
+    try:
+        if settings['use_ssl']:
+            server = smtplib.SMTP_SSL(settings['server'], settings['port'], timeout=10)
+        else:
+            server = smtplib.SMTP(settings['server'], settings['port'], timeout=10)
+            if settings['use_tls']:
+                server.starttls()
+        
+        server.login(username, password)
+        server.quit()
+        
+        return {
+            'success': True, 
+            'message': f'Successfully connected to {settings["server"]}:{settings["port"]} (provider: {provider})'
+        }
+        
+    except smtplib.SMTPAuthenticationError:
+        return {
+            'success': False, 
+            'message': f'Authentication failed for provider: {provider}. Check username/password.'
+        }
+    except smtplib.SMTPConnectError:
+        return {
+            'success': False, 
+            'message': f'Could not connect to {settings["server"]}:{settings["port"]}'
+        }
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
+
+def get_provider_info():
+    """
+    Get information about configured email provider.
+    
+    Returns:
+        dict: Provider configuration info (safe for display)
+    """
+    provider = Config.MAIL_PROVIDER or 'custom'
+    settings = get_smtp_settings()
+    username, _ = get_smtp_credentials()
+    
+    return {
+        'provider': provider,
+        'server': settings['server'],
+        'port': settings['port'],
+        'use_tls': settings['use_tls'],
+        'use_ssl': settings.get('use_ssl', False),
+        'username': username[:3] + '***' if username else None,
+        'enabled': Config.MAIL_ENABLED,
+        'note': Config.SMTP_PROVIDERS.get(provider, {}).get('note', '')
+    }

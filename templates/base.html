@@ -123,6 +123,41 @@
 
           <ul class="navbar-nav">
             {% if current_user %}
+            <!-- Notifications Dropdown -->
+            <li class="nav-item dropdown me-2">
+              <a
+                class="nav-link position-relative"
+                href="#"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                id="notificationDropdown"
+              >
+                <i class="bi bi-bell fs-5"></i>
+                <span class="notification-badge position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notificationBadge" style="display: none;">
+                  <span id="notificationCount">0</span>
+                  <span class="visually-hidden">unread notifications</span>
+                </span>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown" style="min-width: 320px; max-height: 400px; overflow-y: auto;">
+                <li class="dropdown-header d-flex justify-content-between align-items-center px-3 py-2">
+                  <span><i class="bi bi-bell me-2"></i>Notifications</span>
+                  <a href="#" class="text-info small" id="markAllReadBtn" onclick="markAllRead(event)">Mark all read</a>
+                </li>
+                <li><hr class="dropdown-divider my-1" /></li>
+                <div id="notificationList">
+                  <li class="text-center text-muted py-3">
+                    <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                    <small>Loading notifications...</small>
+                  </li>
+                </div>
+                <li><hr class="dropdown-divider my-1" /></li>
+                <li class="text-center py-2">
+                  <a href="{{ url_for('notifications') }}" class="text-info small">View all notifications</a>
+                </li>
+              </ul>
+            </li>
+            
             <li class="nav-item dropdown">
               <a
                 class="nav-link dropdown-toggle"
@@ -213,7 +248,7 @@
     <main>{% block content %}{% endblock %}</main>
 
     <!-- Footer -->
-    <footer class="bg-dark text-light py-5 mt-5">
+    <footer class="bg-dark text-light py-5">
       <div class="container">
         <div class="row">
           <div class="col-lg-4 mb-4">
@@ -276,14 +311,37 @@
           </div>
         </div>
         <hr class="my-4 border-secondary" />
-        <div class="text-center text-muted">
-          <small
-            >&copy; {{ current_year }} AI Blog. All content is
-            AI-generated.</small
-          >
+        <div class="row">
+          <div class="col-12 text-center">
+            <div class="mb-2">
+              <a href="{{ url_for('terms') }}" class="text-muted text-decoration-none me-3"><small>Terms & Conditions</small></a>
+              <a href="{{ url_for('privacy') }}" class="text-muted text-decoration-none me-3"><small>Privacy Policy</small></a>
+              <a href="{{ url_for('cookies') }}" class="text-muted text-decoration-none"><small>Cookie Policy</small></a>
+            </div>
+            <small class="text-muted">&copy; {{ current_year }} AI Blog. All content is AI-generated.</small>
+          </div>
         </div>
       </div>
     </footer>
+
+    <!-- Cookie Consent Banner -->
+    <div id="cookieConsent" class="cookie-consent" style="display: none;">
+      <div class="container">
+        <div class="d-flex flex-column flex-md-row align-items-center justify-content-between py-3">
+          <div class="me-3 mb-2 mb-md-0">
+            <p class="mb-0">
+              <i class="bi bi-cookie me-2"></i>
+              We use cookies to enhance your experience. By continuing to visit this site you agree to our use of cookies.
+              <a href="{{ url_for('cookies') }}" class="text-info">Learn more</a>
+            </p>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" onclick="declineCookies()">Decline</button>
+            <button class="btn btn-primary btn-sm" onclick="acceptCookies()">Accept</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -318,5 +376,174 @@
         }
       })();
     </script>
+
+    <!-- Cookie Consent Script -->
+    <script>
+      (function() {
+        const cookieConsent = localStorage.getItem('cookieConsent');
+        const banner = document.getElementById('cookieConsent');
+        
+        if (!cookieConsent && banner) {
+          banner.style.display = 'block';
+        }
+      })();
+
+      function acceptCookies() {
+        localStorage.setItem('cookieConsent', 'accepted');
+        document.getElementById('cookieConsent').style.display = 'none';
+      }
+
+      function declineCookies() {
+        localStorage.setItem('cookieConsent', 'declined');
+        document.getElementById('cookieConsent').style.display = 'none';
+      }
+    </script>
+
+    {% if current_user %}
+    <!-- Notification Scripts -->
+    <script>
+      // Load notifications when dropdown is opened
+      document.addEventListener('DOMContentLoaded', function() {
+        const dropdown = document.getElementById('notificationDropdown');
+        if (dropdown) {
+          // Load initial count
+          loadNotificationCount();
+          
+          // Refresh count every 60 seconds
+          setInterval(loadNotificationCount, 60000);
+          
+          // Load notifications when dropdown opens
+          dropdown.addEventListener('click', loadNotifications);
+        }
+      });
+
+      function loadNotificationCount() {
+        fetch('/notifications/unread-count')
+          .then(response => response.json())
+          .then(data => {
+            updateBadge(data.count);
+          })
+          .catch(err => console.log('Failed to load notification count'));
+      }
+
+      function updateBadge(count) {
+        const badge = document.getElementById('notificationBadge');
+        const countEl = document.getElementById('notificationCount');
+        if (badge && countEl) {
+          if (count > 0) {
+            countEl.textContent = count > 99 ? '99+' : count;
+            badge.style.display = 'block';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+      }
+
+      function loadNotifications() {
+        fetch('/notifications/recent')
+          .then(response => response.json())
+          .then(data => {
+            updateBadge(data.unread_count);
+            renderNotifications(data.notifications);
+          })
+          .catch(err => {
+            document.getElementById('notificationList').innerHTML = `
+              <li class="text-center text-muted py-3">
+                <small>Failed to load notifications</small>
+              </li>
+            `;
+          });
+      }
+
+      function renderNotifications(notifications) {
+        const container = document.getElementById('notificationList');
+        
+        if (!notifications || notifications.length === 0) {
+          container.innerHTML = `
+            <li class="text-center text-muted py-3">
+              <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+              <small>No notifications yet</small>
+            </li>
+          `;
+          return;
+        }
+
+        container.innerHTML = notifications.map(n => `
+          <li>
+            <a class="dropdown-item notification-item ${n.is_read ? '' : 'unread'}" 
+               href="${n.link || '#'}"
+               onclick="markAsRead(event, ${n.id})">
+              <div class="d-flex align-items-start">
+                <div class="notification-icon me-2">
+                  <i class="bi ${getNotificationIcon(n.type)} ${n.is_read ? 'text-muted' : 'text-primary'}"></i>
+                </div>
+                <div class="flex-grow-1">
+                  <div class="notification-title ${n.is_read ? 'text-muted' : 'fw-semibold'}">${escapeHtml(n.title)}</div>
+                  ${n.message ? `<div class="notification-message small text-muted text-truncate" style="max-width: 250px;">${escapeHtml(n.message)}</div>` : ''}
+                  <div class="notification-time small text-muted mt-1">
+                    ${n.tool_name ? `<span class="badge bg-secondary me-1">${escapeHtml(n.tool_name)}</span>` : ''}
+                    ${formatTimeAgo(n.created_at)}
+                  </div>
+                </div>
+                ${!n.is_read ? '<span class="notification-dot bg-primary rounded-circle" style="width: 8px; height: 8px;"></span>' : ''}
+              </div>
+            </a>
+          </li>
+        `).join('');
+      }
+
+      function getNotificationIcon(type) {
+        const icons = {
+          'new_post': 'bi-file-earmark-text',
+          'comment_reply': 'bi-chat-dots',
+          'system': 'bi-info-circle',
+          'welcome': 'bi-hand-wave'
+        };
+        return icons[type] || 'bi-bell';
+      }
+
+      function formatTimeAgo(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+        
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+        if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+        return date.toLocaleDateString();
+      }
+
+      function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function markAsRead(event, notificationId) {
+        // Don't prevent navigation, just mark as read in background
+        fetch(`/notifications/${notificationId}/read`, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(() => loadNotificationCount());
+      }
+
+      function markAllRead(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        fetch('/notifications/mark-all-read', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+          loadNotificationCount();
+          loadNotifications();
+        });
+      }
+    </script>
+    {% endif %}
   </body>
 </html>

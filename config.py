@@ -77,13 +77,92 @@ class Config:
     RATELIMIT_DEFAULT = "100 per hour"
     
     # Email settings (for notifications)
-    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    # MAIL_PROVIDER options: 'gmail', 'outlook', 'sendgrid', 'mailgun', 'ses', 'custom'
+    MAIL_PROVIDER = os.environ.get('MAIL_PROVIDER', 'custom')
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', '')
     MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true'
+    MAIL_USE_SSL = os.environ.get('MAIL_USE_SSL', 'false').lower() == 'true'
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '')
-    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')  # App password for Gmail
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'AI Blog <noreply@aiblog.com>')
     MAIL_ENABLED = os.environ.get('MAIL_ENABLED', 'false').lower() == 'true'
+    
+    # SendGrid specific
+    SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
+    
+    # Mailgun specific
+    MAILGUN_API_KEY = os.environ.get('MAILGUN_API_KEY', '')
+    MAILGUN_DOMAIN = os.environ.get('MAILGUN_DOMAIN', '')
+    
+    # AWS SES specific
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
+    AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'us-east-1')
+    
+    # SMTP Provider Presets (used when MAIL_PROVIDER is set)
+    SMTP_PROVIDERS = {
+        'gmail': {
+            'server': 'smtp.gmail.com',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Requires App Password (not regular password). Enable 2FA first.'
+        },
+        'outlook': {
+            'server': 'smtp.office365.com',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Use your Microsoft 365 account credentials.'
+        },
+        'yahoo': {
+            'server': 'smtp.mail.yahoo.com',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Requires App Password. Enable "Allow less secure apps" or generate app password.'
+        },
+        'sendgrid': {
+            'server': 'smtp.sendgrid.net',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Use "apikey" as username and your API key as password.'
+        },
+        'mailgun': {
+            'server': 'smtp.mailgun.org',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Use postmaster@yourdomain as username.'
+        },
+        'ses': {
+            'server': 'email-smtp.{region}.amazonaws.com',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Use SMTP credentials from AWS SES console (not IAM credentials).'
+        },
+        'zoho': {
+            'server': 'smtp.zoho.com',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Use your Zoho email and password or app-specific password.'
+        },
+        'postmark': {
+            'server': 'smtp.postmarkapp.com',
+            'port': 587,
+            'use_tls': True,
+            'use_ssl': False,
+            'note': 'Use your Server API Token as both username and password.'
+        }
+    }
+    
+    # In-app notification settings
+    NOTIFICATIONS_ENABLED = os.environ.get('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
+    NOTIFICATIONS_MAX_AGE_DAYS = int(os.environ.get('NOTIFICATIONS_MAX_AGE_DAYS', 30))
     
     # Scheduler settings
     SCHEDULER_ENABLED = os.environ.get('SCHEDULER_ENABLED', 'true').lower() == 'true'

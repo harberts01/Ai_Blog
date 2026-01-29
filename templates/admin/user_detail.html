@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ user.username }} - Admin{% endblock %}
+{% block content %}
+<div class="py-5 bg-light">
+  <div class="container">
+    <!-- Header -->
+    <nav aria-label="breadcrumb" class="mb-3">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('admin_users') }}">Users</a></li>
+        <li class="breadcrumb-item active">{{ user.username }}</li>
+      </ol>
+    </nav>
+
+    <div class="row">
+      <!-- User Info Card -->
+      <div class="col-lg-4 mb-4">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body text-center p-4">
+            <div class="bg-{% if user.is_admin %}danger{% else %}primary{% endif %} text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+              <i class="bi bi-person display-4"></i>
+            </div>
+            <h4 class="mb-1">{{ user.username }}</h4>
+            <p class="text-muted mb-3">{{ user.email }}</p>
+            
+            <div class="d-flex justify-content-center gap-2 mb-3">
+              {% if user.is_admin %}
+              <span class="badge bg-danger">Admin</span>
+              {% endif %}
+              {% if user.is_active %}
+              <span class="badge bg-success">Active</span>
+              {% else %}
+              <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+              {% if user.email_notifications %}
+              <span class="badge bg-info">Email Notifications</span>
+              {% endif %}
+            </div>
+            
+            <hr>
+            
+            <div class="text-start">
+              <p class="mb-2"><strong>Joined:</strong> {{ user.created_at.strftime('%B %d, %Y') if user.created_at else 'N/A' }}</p>
+              <p class="mb-2"><strong>Subscriptions:</strong> {{ subscriptions|length }}</p>
+              <p class="mb-2"><strong>Bookmarks:</strong> {{ bookmarks|length }}</p>
+              <p class="mb-0"><strong>Comments:</strong> {{ comments|length }}</p>
+            </div>
+            
+            {% if user.id != current_user.id %}
+            <hr>
+            <div class="d-grid gap-2">
+              <form action="{{ url_for('admin_toggle_active', user_id=user.id) }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-{% if user.is_active %}warning{% else %}success{% endif %} w-100">
+                  <i class="bi bi-{% if user.is_active %}x-circle{% else %}check-circle{% endif %} me-1"></i>
+                  {% if user.is_active %}Deactivate{% else %}Activate{% endif %} Account
+                </button>
+              </form>
+              <form action="{{ url_for('admin_toggle_admin', user_id=user.id) }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-outline-{% if user.is_admin %}secondary{% else %}danger{% endif %} w-100">
+                  <i class="bi bi-shield{% if user.is_admin %}-x{% else %}-check{% endif %} me-1"></i>
+                  {% if user.is_admin %}Remove Admin{% else %}Make Admin{% endif %}
+                </button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Comments Section -->
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-chat-dots me-2"></i>User Comments ({{ comments|length }})</h5>
+          </div>
+          <div class="card-body p-0">
+            {% if comments %}
+            <div class="list-group list-group-flush">
+              {% for comment in comments %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <a href="{{ url_for('post', post_id=comment.post_id) }}" class="text-decoration-none">
+                    <strong class="text-primary">{{ comment.post_title|truncate(50) }}</strong>
+                  </a>
+                  <div>
+                    {% if comment.is_spam %}
+                    <span class="badge bg-danger">Spam</span>
+                    {% endif %}
+                    <small class="text-muted ms-2">{{ comment.created_at.strftime('%b %d, %Y %H:%M') }}</small>
+                  </div>
+                </div>
+                <p class="mb-0 text-muted">{{ comment.content|truncate(200) }}</p>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+              <i class="bi bi-chat display-4"></i>
+              <p class="mt-2">No comments from this user</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Subscriptions -->
+        {% if subscriptions %}
+        <div class="card border-0 shadow-sm mt-4">
+          <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-bell me-2"></i>Subscriptions ({{ subscriptions|length }})</h5>
+          </div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2">
+              {% for sub in subscriptions %}
+              <span class="badge bg-primary">{{ sub.name }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

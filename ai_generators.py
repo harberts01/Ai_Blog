@@ -628,16 +628,42 @@ def generate_post_for_tool(tool_slug, app=None):
 
 
 def _send_post_notifications(app, post_data, tool):
-    """Send email notifications to tool subscribers"""
-    try:
-        from email_utils import send_new_post_notification
-        
-        subscribers = db.get_subscriber_emails_by_tool(tool['id'])
-        if subscribers:
-            send_new_post_notification(app, post_data, tool['name'], subscribers)
-            print(f"📧 Notification queued for {len(subscribers)} subscribers")
-    except Exception as e:
-        print(f"⚠️ Failed to send notifications: {e}")
+    """Send email and in-app notifications to tool subscribers"""
+    from config import Config
+    
+    # Send in-app notifications (always, if enabled)
+    if Config.NOTIFICATIONS_ENABLED:
+        try:
+            subscriber_ids = db.get_subscriber_user_ids_by_tool(tool['id'])
+            if subscriber_ids:
+                title = f"New post from {tool['name']}"
+                message = post_data.get('title', 'A new post has been published')
+                link = f"/post/{post_data['id']}"
+                
+                count = db.create_bulk_notifications(
+                    user_ids=subscriber_ids,
+                    notification_type='new_post',
+                    title=title,
+                    message=message,
+                    link=link,
+                    tool_id=tool['id'],
+                    post_id=post_data['id']
+                )
+                print(f"🔔 In-app notifications created for {count} subscribers")
+        except Exception as e:
+            print(f"⚠️ Failed to create in-app notifications: {e}")
+    
+    # Send email notifications (if enabled)
+    if Config.MAIL_ENABLED:
+        try:
+            from email_utils import send_new_post_notification
+            
+            subscribers = db.get_subscriber_emails_by_tool(tool['id'])
+            if subscribers:
+                send_new_post_notification(app, post_data, tool['name'], subscribers)
+                print(f"📧 Email notifications queued for {len(subscribers)} subscribers")
+        except Exception as e:
+            print(f"⚠️ Failed to send email notifications: {e}")
 
 
 def generate_all_posts(app=None):

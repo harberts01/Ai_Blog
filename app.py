@@ -557,6 +557,28 @@ def admin_toggle_active(user_id):
     return redirect(url_for('admin_users'))
 
 
+@app.route("/admin/users/<int:user_id>")
+@admin_required
+def admin_view_user(user_id):
+    """Admin view user details with comments"""
+    user = db.get_user_by_id(user_id)
+    if not user:
+        flash('User not found.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    comments = db.get_comments_by_user(user_id, limit=50)
+    subscriptions = db.get_user_subscriptions(user_id)
+    bookmarks = db.get_user_bookmarks(user_id)
+    
+    return render_template(
+        "admin/user_detail.html",
+        user=user,
+        comments=comments,
+        subscriptions=subscriptions,
+        bookmarks=bookmarks
+    )
+
+
 @app.route("/admin/comments")
 @admin_required
 def admin_comments():
@@ -904,6 +926,95 @@ def api_stats():
     })
 
 
+# ============== Legal Pages ==============
+
+@app.route("/terms")
+def terms():
+    """Terms and Conditions page"""
+    return render_template("legal/terms.html")
+
+
+@app.route("/privacy")
+def privacy():
+    """Privacy Policy page"""
+    return render_template("legal/privacy.html")
+
+
+@app.route("/cookies")
+def cookies():
+    """Cookie Policy page"""
+    return render_template("legal/cookies.html")
+
+
+# ============== Notifications ==============
+
+@app.route("/notifications")
+@login_required
+def notifications():
+    """View all notifications for the current user"""
+    user = get_current_user()
+    notifications_list = db.get_user_notifications(user.id, limit=100)
+    unread_count = db.get_unread_notification_count(user.id)
+    return render_template("notifications.html", notifications=notifications_list, unread_count=unread_count)
+
+
+@app.route("/notifications/unread-count")
+@login_required
+def notifications_unread_count():
+    """API endpoint to get unread notification count (for AJAX updates)"""
+    user = get_current_user()
+    count = db.get_unread_notification_count(user.id)
+    return jsonify({'count': count})
+
+
+@app.route("/notifications/<int:notification_id>/read", methods=["POST"])
+@login_required
+def mark_notification_read(notification_id):
+    """Mark a single notification as read"""
+    user = get_current_user()
+    success = db.mark_notification_read(notification_id, user.id)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': success})
+    return redirect(url_for('notifications'))
+
+
+@app.route("/notifications/mark-all-read", methods=["POST"])
+@login_required
+def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    user = get_current_user()
+    count = db.mark_all_notifications_read(user.id)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': True, 'marked_count': count})
+    flash(f'Marked {count} notifications as read', 'success')
+    return redirect(url_for('notifications'))
+
+
+@app.route("/notifications/recent")
+@login_required  
+def notifications_recent():
+    """API endpoint to get recent notifications (for dropdown)"""
+    user = get_current_user()
+    notifications_list = db.get_user_notifications(user.id, limit=10, unread_only=False)
+    return jsonify({
+        'notifications': [
+            {
+                'id': n['id'],
+                'type': n['type'],
+                'title': n['title'],
+                'message': n['message'],
+                'link': n['link'],
+                'is_read': n['is_read'],
+                'created_at': n['created_at'].isoformat() if n['created_at'] else None,
+                'tool_name': n['tool_name'],
+                'tool_slug': n['tool_slug']
+            }
+            for n in notifications_list
+        ],
+        'unread_count': db.get_unread_notification_count(user.id)
+    })
+
+
 # ============== Main ==============
 
 if __name__ == "__main__":
@@ -914,17 +1025,24 @@ if __name__ == "__main__":
         def generate_with_notifications():
             ai_generators.generate_all_posts(app=app)
         
+        def cleanup_old_notifications():
+            count = db.delete_old_notifications(Config.NOTIFICATIONS_MAX_AGE_DAYS)
+            if count > 0:
+                print(f"🗑️ Cleaned up {count} old notifications")
+        
         # Run daily at 9 AM to check which tools need new posts
         # Each tool posts once per week, so with 6 tools = ~1 post/day
         schedule.every().day.at("09:00").do(generate_with_notifications)
         schedule.every(30).days.do(cleanup_spam_comments)
+        schedule.every(7).days.do(cleanup_old_notifications)
         
         scheduler_active = True
         scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
         scheduler_thread.start()
         
         print("📝 Scheduler active - daily check at 9 AM (each tool posts weekly)")
-        print("🗑️ Spam cleanup scheduled - will delete old spam comments every 30 days")
+        print("🗑️ Spam cleanup scheduled - every 30 days")
+        print("🔔 Notification cleanup scheduled - every 7 days")
     else:
         print("📝 Scheduler disabled (set SCHEDULER_ENABLED=true to enable)")
     

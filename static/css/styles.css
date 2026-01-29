@@ -767,12 +767,118 @@ footer .text-muted {
   font-size: 1.1rem;
 }
 
+/* ========== Cookie Consent Banner ========== */
+.cookie-consent {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--dark-color);
+  color: #fff;
+  z-index: 9998;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .cookie-consent {
+  background: #0f172a;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cookie-consent p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.cookie-consent .bi-cookie {
+  color: #f59e0b;
+}
+
+/* ========== Notification Styles ========== */
+.notification-badge {
+  font-size: 0.65rem;
+  padding: 0.2em 0.45em;
+  transform: translate(-50%, -25%) !important;
+}
+
+.notification-dropdown {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.notification-dropdown .dropdown-header {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-item {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.notification-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.notification-item.unread {
+  background: rgba(79, 70, 229, 0.1);
+  border-left-color: var(--primary-color);
+}
+
+.notification-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.notification-title {
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.notification-message {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.notification-time {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.notification-dot {
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* Notification page styles */
+.notification-card {
+  border-left: 4px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.notification-card.unread {
+  border-left-color: var(--primary-color);
+  background: rgba(79, 70, 229, 0.05);
+}
+
+.notification-card:hover {
+  box-shadow: var(--shadow);
+}
+
 /* ========== Print Styles ========== */
 @media print {
   .navbar,
   footer,
   .btn,
-  form {
+  form,
+  .cookie-consent {
     display: none !important;
   }
 

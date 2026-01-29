@@ -788,6 +788,38 @@ def get_comments_by_post(post_id):
         connection.close()
 
 
+def get_comments_by_user(user_id, limit=50):
+    """Get all comments by a specific user with post info"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT c.commentid, c.content, c.CreatedAt, c.is_spam,
+                       p.postid, p.Title
+                FROM Comment c
+                JOIN Post p ON c.postid = p.postid
+                WHERE c.user_id = %s
+                ORDER BY c.CreatedAt DESC
+                LIMIT %s
+            """, (user_id, limit))
+            
+            return [
+                {
+                    'id': row[0],
+                    'content': row[1],
+                    'created_at': row[2],
+                    'is_spam': row[3],
+                    'post_id': row[4],
+                    'post_title': row[5]
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
 def insert_comment(post_id, content, user_id=None, parent_id=None):
     """Insert a new comment or reply"""
     connection = get_connection()
@@ -1601,5 +1633,214 @@ def get_recent_comparisons(limit=10):
                 }
                 for row in cursor.fetchall()
             ]
+    finally:
+        connection.close()
+
+
+# ============================================
+# In-App Notification Functions
+# ============================================
+
+def create_notification(user_id, notification_type, title, message=None, link=None, tool_id=None, post_id=None):
+    """
+    Create a new in-app notification for a user
+    
+    Args:
+        user_id: Target user's ID
+        notification_type: Type of notification ('new_post', 'comment_reply', 'system', etc.)
+        title: Notification title (max 255 chars)
+        message: Optional detailed message
+        link: Optional URL to navigate to when clicked
+        tool_id: Optional related AI tool ID
+        post_id: Optional related post ID
+    
+    Returns:
+        notification_id if successful, None otherwise
+    """
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO Notification (user_id, type, title, message, link, tool_id, post_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING notification_id
+            """, (user_id, notification_type, title[:255], message, link, tool_id, post_id))
+            connection.commit()
+            return cursor.fetchone()[0]
+    except Exception as e:
+        logger.error(f"Error creating notification: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def create_bulk_notifications(user_ids, notification_type, title, message=None, link=None, tool_id=None, post_id=None):
+    """
+    Create notifications for multiple users at once (e.g., for new post notifications)
+    
+    Args:
+        user_ids: List of user IDs to notify
+        Other args same as create_notification
+    
+    Returns:
+        Number of notifications created
+    """
+    if not user_ids:
+        return 0
+    
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            # Use executemany for bulk insert
+            data = [(uid, notification_type, title[:255], message, link, tool_id, post_id) for uid in user_ids]
+            cursor.executemany("""
+                INSERT INTO Notification (user_id, type, title, message, link, tool_id, post_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, data)
+            connection.commit()
+            return len(user_ids)
+    except Exception as e:
+        logger.error(f"Error creating bulk notifications: {e}")
+        return 0
+    finally:
+        connection.close()
+
+
+def get_user_notifications(user_id, limit=50, unread_only=False):
+    """
+    Get notifications for a user
+    
+    Args:
+        user_id: User's ID
+        limit: Maximum number of notifications to return
+        unread_only: If True, only return unread notifications
+    
+    Returns:
+        List of notification dictionaries
+    """
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            query = """
+                SELECT n.notification_id, n.type, n.title, n.message, n.link, 
+                       n.tool_id, n.post_id, n.is_read, n.created_at,
+                       t.name as tool_name, t.slug as tool_slug
+                FROM Notification n
+                LEFT JOIN AITool t ON n.tool_id = t.tool_id
+                WHERE n.user_id = %s
+            """
+            if unread_only:
+                query += " AND n.is_read = FALSE"
+            query += " ORDER BY n.created_at DESC LIMIT %s"
+            
+            cursor.execute(query, (user_id, limit))
+            return [
+                {
+                    'id': row[0],
+                    'type': row[1],
+                    'title': row[2],
+                    'message': row[3],
+                    'link': row[4],
+                    'tool_id': row[5],
+                    'post_id': row[6],
+                    'is_read': row[7],
+                    'created_at': row[8],
+                    'tool_name': row[9],
+                    'tool_slug': row[10]
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
+def get_unread_notification_count(user_id):
+    """Get count of unread notifications for a user"""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM Notification WHERE user_id = %s AND is_read = FALSE",
+                (user_id,)
+            )
+            return cursor.fetchone()[0]
+    finally:
+        connection.close()
+
+
+def mark_notification_read(notification_id, user_id):
+    """Mark a single notification as read (verifies ownership)"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE Notification 
+                SET is_read = TRUE 
+                WHERE notification_id = %s AND user_id = %s
+            """, (notification_id, user_id))
+            connection.commit()
+            return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
+def mark_all_notifications_read(user_id):
+    """Mark all notifications as read for a user"""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE Notification SET is_read = TRUE WHERE user_id = %s AND is_read = FALSE",
+                (user_id,)
+            )
+            connection.commit()
+            return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def delete_old_notifications(days=30):
+    """Delete notifications older than specified days"""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM Notification 
+                WHERE created_at < NOW() - INTERVAL '%s days'
+            """, (days,))
+            connection.commit()
+            return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def get_subscriber_user_ids_by_tool(tool_id):
+    """Get user IDs (not emails) of all users subscribed to a tool (for in-app notifications)"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT u.user_id
+                FROM Users u
+                JOIN Subscription s ON u.user_id = s.user_id
+                WHERE s.tool_id = %s AND u.is_active = TRUE
+            """, (tool_id,))
+            return [row[0] for row in cursor.fetchall()]
     finally:
         connection.close()
