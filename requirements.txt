@@ -6,6 +6,7 @@ python-dotenv
 requests
 schedule
 werkzeug
+gunicorn
 
 # AI Provider SDKs
 openai>=1.0.0

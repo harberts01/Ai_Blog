@@ -11,6 +11,7 @@ separate modules for better maintainability:
 - utils.py       : Utility functions
 - ai_generators.py : AI content generation
 """
+import os
 import re
 import schedule
 import threading
@@ -897,6 +898,10 @@ if __name__ == "__main__":
     else:
         print("📝 Scheduler disabled (set SCHEDULER_ENABLED=true to enable)")
     
-    print("🌐 Visit http://127.0.0.1:5000")
+    # Use PORT from environment for Heroku, default to 5000 locally
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     
-    app.run(debug=True)
+    print(f"🌐 Starting on port {port}")
+    
+    app.run(host='0.0.0.0', port=port, debug=debug)

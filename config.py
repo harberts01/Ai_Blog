@@ -3,20 +3,50 @@ Application Configuration
 Secure settings management for the AI Blog platform
 """
 import os
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def parse_database_url(url):
+    """Parse DATABASE_URL into individual components for psycopg2"""
+    if not url:
+        return None
+    # Heroku uses postgres:// but psycopg2 needs postgresql://
+    if url.startswith('postgres://'):
+        url = url.replace('postgres://', 'postgresql://', 1)
+    parsed = urlparse(url)
+    return {
+        'host': parsed.hostname,
+        'port': parsed.port or 5432,
+        'database': parsed.path[1:],  # Remove leading /
+        'user': parsed.username,
+        'password': parsed.password
+    }
+
 
 class Config:
     # Flask settings
     SECRET_KEY = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
     
     # PostgreSQL Database settings
-    DB_HOST = os.environ.get('DB_HOST', 'localhost')
-    DB_PORT = os.environ.get('DB_PORT', '5432')
-    DB_NAME = os.environ.get('DB_NAME', 'ai_blog')
-    DB_USER = os.environ.get('DB_USER', 'postgres')
-    DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
+    # Support both Heroku's DATABASE_URL and individual env vars
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    
+    if DATABASE_URL:
+        _db_config = parse_database_url(DATABASE_URL)
+        DB_HOST = _db_config['host']
+        DB_PORT = str(_db_config['port'])
+        DB_NAME = _db_config['database']
+        DB_USER = _db_config['user']
+        DB_PASSWORD = _db_config['password']
+    else:
+        DB_HOST = os.environ.get('DB_HOST', 'localhost')
+        DB_PORT = os.environ.get('DB_PORT', '5432')
+        DB_NAME = os.environ.get('DB_NAME', 'ai_blog')
+        DB_USER = os.environ.get('DB_USER', 'postgres')
+        DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
     
     # ============== Native API Keys ==============
     # OpenAI (ChatGPT)

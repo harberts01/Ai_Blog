@@ -2,6 +2,7 @@
 Database Module
 Handles all database connections and operations
 """
+import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from config import Config
@@ -10,13 +11,28 @@ from config import Config
 def get_connection():
     """Create and return a database connection"""
     try:
-        conn = psycopg2.connect(
-            host=Config.DB_HOST,
-            port=Config.DB_PORT,
-            database=Config.DB_NAME,
-            user=Config.DB_USER,
-            password=Config.DB_PASSWORD
-        )
+        # Check if DATABASE_URL is set (Dokploy/Heroku style)
+        database_url = os.environ.get('DATABASE_URL')
+        
+        if database_url:
+            # Some providers use postgres:// but psycopg2 needs postgresql://
+            if database_url.startswith('postgres://'):
+                database_url = database_url.replace('postgres://', 'postgresql://', 1)
+            
+            # SSL mode: require for external connections, disable for internal Docker networks
+            ssl_mode = os.environ.get('DB_SSL_MODE', 'prefer')
+            conn = psycopg2.connect(database_url, sslmode=ssl_mode)
+        else:
+            # Local/VPS development with individual env vars
+            ssl_mode = os.environ.get('DB_SSL_MODE', 'prefer')
+            conn = psycopg2.connect(
+                host=Config.DB_HOST,
+                port=Config.DB_PORT,
+                database=Config.DB_NAME,
+                user=Config.DB_USER,
+                password=Config.DB_PASSWORD,
+                sslmode=ssl_mode
+            )
         return conn
     except psycopg2.Error as e:
         print(f'Database connection failed: {e}')
