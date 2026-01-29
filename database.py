@@ -3,9 +3,13 @@ Database Module
 Handles all database connections and operations
 """
 import os
+import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from config import Config
+
+# Configure logging - never log sensitive data like passwords or connection strings
+logger = logging.getLogger(__name__)
 
 
 def get_connection():
@@ -35,7 +39,8 @@ def get_connection():
             )
         return conn
     except psycopg2.Error as e:
-        print(f'Database connection failed: {e}')
+        # Log error without exposing connection details
+        logger.error(f'Database connection failed: {type(e).__name__}')
         return None
 
 
@@ -43,9 +48,9 @@ def get_connection():
 conn = get_connection()
 
 if conn:
-    print('Database connection established.')
+    logger.info('Database connection established.')
 else:
-    print('Warning: Database connection could not be established.')
+    logger.warning('Database connection could not be established.')
 
 
 # ============== AI Tools ==============

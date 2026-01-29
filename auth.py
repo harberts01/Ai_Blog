@@ -44,12 +44,19 @@ def login_user(user_id, permanent=True):
     """
     Log in a user by setting session data.
     
+    Regenerates session to prevent session fixation attacks.
+    
     Args:
         user_id: The user's database ID
         permanent: Whether the session should persist
     """
+    # Clear any existing session data first (prevents session fixation)
+    session.clear()
+    
+    # Set new session data
     session['user_id'] = user_id
     session.permanent = permanent
+    session.modified = True
 
 
 def logout_user():

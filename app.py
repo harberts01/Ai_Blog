@@ -13,14 +13,33 @@ separate modules for better maintainability:
 """
 import os
 import re
+import logging
 import schedule
 import threading
 from datetime import datetime
+from urllib.parse import urlparse, urljoin
 
 from flask import (
     Flask, render_template, request, redirect, 
     url_for, flash, session, abort, jsonify
 )
+
+# Configure secure logging (no sensitive data)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
+
+
+def is_safe_url(target):
+    """Validate redirect URL to prevent open redirect attacks"""
+    if not target:
+        return False
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -245,6 +264,12 @@ def register():
         
         if not password or len(password) < 8:
             errors.append('Password must be at least 8 characters.')
+        elif not any(c.isupper() for c in password):
+            errors.append('Password must contain at least one uppercase letter.')
+        elif not any(c.islower() for c in password):
+            errors.append('Password must contain at least one lowercase letter.')
+        elif not any(c.isdigit() for c in password):
+            errors.append('Password must contain at least one number.')
         
         if password != confirm_password:
             errors.append('Passwords do not match.')
@@ -285,17 +310,22 @@ def login():
         
         if user and check_password_hash(user['password_hash'], password):
             if not user['is_active']:
+                logger.warning(f"Login attempt for deactivated account: {email}")
                 flash('Your account has been deactivated.', 'error')
                 return render_template("login.html")
             
             login_user(user['id'])
+            logger.info(f"Successful login for user_id: {user['id']}")
             flash(f'Welcome back, {user["username"]}!', 'success')
             
+            # Validate redirect URL to prevent open redirect attacks
             next_page = request.args.get('next')
-            if next_page:
+            if next_page and is_safe_url(next_page):
                 return redirect(next_page)
             return redirect(url_for('my_feed'))
         else:
+            # Log failed attempt (don't log the password!)
+            logger.warning(f"Failed login attempt for email: {email}")
             flash('Invalid email or password.', 'error')
     
     return render_template("login.html")
