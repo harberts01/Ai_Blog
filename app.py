@@ -68,7 +68,7 @@ csrf = CSRFProtect(app)
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=["1000 per day", "200 per hour"],
     storage_uri="memory://"
 )
 
@@ -1102,17 +1102,18 @@ def cookies():
 def notifications():
     """View all notifications for the current user"""
     user = get_current_user()
-    notifications_list = db.get_user_notifications(user.id, limit=100)
-    unread_count = db.get_unread_notification_count(user.id)
+    notifications_list = db.get_user_notifications(user['id'], limit=100)
+    unread_count = db.get_unread_notification_count(user['id'])
     return render_template("notifications.html", notifications=notifications_list, unread_count=unread_count)
 
 
 @app.route("/notifications/unread-count")
+@limiter.exempt
 @login_required
 def notifications_unread_count():
     """API endpoint to get unread notification count (for AJAX updates)"""
     user = get_current_user()
-    count = db.get_unread_notification_count(user.id)
+    count = db.get_unread_notification_count(user['id'])
     return jsonify({'count': count})
 
 
@@ -1121,7 +1122,7 @@ def notifications_unread_count():
 def mark_notification_read(notification_id):
     """Mark a single notification as read"""
     user = get_current_user()
-    success = db.mark_notification_read(notification_id, user.id)
+    success = db.mark_notification_read(notification_id, user['id'])
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({'success': success})
     return redirect(url_for('notifications'))
@@ -1132,7 +1133,7 @@ def mark_notification_read(notification_id):
 def mark_all_notifications_read():
     """Mark all notifications as read"""
     user = get_current_user()
-    count = db.mark_all_notifications_read(user.id)
+    count = db.mark_all_notifications_read(user['id'])
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({'success': True, 'marked_count': count})
     flash(f'Marked {count} notifications as read', 'success')
@@ -1140,11 +1141,12 @@ def mark_all_notifications_read():
 
 
 @app.route("/notifications/recent")
+@limiter.exempt
 @login_required  
 def notifications_recent():
     """API endpoint to get recent notifications (for dropdown)"""
     user = get_current_user()
-    notifications_list = db.get_user_notifications(user.id, limit=10, unread_only=False)
+    notifications_list = db.get_user_notifications(user['id'], limit=10, unread_only=False)
     return jsonify({
         'notifications': [
             {
@@ -1160,7 +1162,7 @@ def notifications_recent():
             }
             for n in notifications_list
         ],
-        'unread_count': db.get_unread_notification_count(user.id)
+        'unread_count': db.get_unread_notification_count(user['id'])
     })
 
 
