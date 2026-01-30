@@ -1,56 +1,58 @@
 <!-- Pagination Component -->
 {% if total_pages > 1 %}
-<nav aria-label="Page navigation" class="mt-5">
-  <ul class="pagination justify-content-center">
+<nav aria-label="Page navigation" class="mt-4 mt-md-5">
+  <ul class="pagination justify-content-center flex-wrap gap-1">
     <!-- Previous Button -->
     <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-      <a class="page-link" href="?page={{ page - 1 }}" aria-label="Previous">
-        <i class="bi bi-chevron-left"></i> Previous
+      <a class="page-link d-flex align-items-center" href="?page={{ page - 1 }}" aria-label="Previous">
+        <i class="bi bi-chevron-left"></i>
+        <span class="d-none d-sm-inline ms-1">Previous</span>
       </a>
     </li>
     
-    <!-- Page Numbers -->
+    <!-- Page Numbers - Desktop -->
     {% set start_page = [1, page - 2]|max %}
     {% set end_page = [total_pages, page + 2]|min %}
     
     {% if start_page > 1 %}
-    <li class="page-item">
+    <li class="page-item d-none d-sm-block">
       <a class="page-link" href="?page=1">1</a>
     </li>
     {% if start_page > 2 %}
-    <li class="page-item disabled">
+    <li class="page-item disabled d-none d-sm-block">
       <span class="page-link">...</span>
     </li>
     {% endif %}
     {% endif %}
     
     {% for p in range(start_page, end_page + 1) %}
-    <li class="page-item {% if p == page %}active{% endif %}">
+    <li class="page-item {% if p == page %}active{% endif %} {% if p != page %}d-none d-sm-block{% endif %}">
       <a class="page-link" href="?page={{ p }}">{{ p }}</a>
     </li>
     {% endfor %}
     
     {% if end_page < total_pages %}
     {% if end_page < total_pages - 1 %}
-    <li class="page-item disabled">
+    <li class="page-item disabled d-none d-sm-block">
       <span class="page-link">...</span>
     </li>
     {% endif %}
-    <li class="page-item">
+    <li class="page-item d-none d-sm-block">
       <a class="page-link" href="?page={{ total_pages }}">{{ total_pages }}</a>
     </li>
     {% endif %}
     
     <!-- Next Button -->
     <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-      <a class="page-link" href="?page={{ page + 1 }}" aria-label="Next">
-        Next <i class="bi bi-chevron-right"></i>
+      <a class="page-link d-flex align-items-center" href="?page={{ page + 1 }}" aria-label="Next">
+        <span class="d-none d-sm-inline me-1">Next</span>
+        <i class="bi bi-chevron-right"></i>
       </a>
     </li>
   </ul>
   
   <p class="text-center text-muted small mt-2">
-    Page {{ page }} of {{ total_pages }} ({{ total_posts }} total posts)
+    Page {{ page }} of {{ total_pages }} <span class="d-none d-sm-inline">({{ total_posts }} total posts)</span>
   </p>
 </nav>
 {% endif %}

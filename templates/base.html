@@ -99,16 +99,16 @@
             {% endif %}
           </ul>
 
-          <!-- Search Form -->
-          <form action="{{ url_for('search') }}" method="GET" class="d-flex me-3">
+          <!-- Search Form - Desktop -->
+          <form action="{{ url_for('search') }}" method="GET" class="d-none d-lg-flex me-3">
             <div class="input-group input-group-sm">
               <input 
                 type="text" 
                 name="q" 
                 class="form-control" 
-                placeholder="Search..." 
+                placeholder="Search posts..." 
                 aria-label="Search"
-                style="min-width: 150px;"
+                style="min-width: 180px;"
               >
               <button class="btn btn-outline-light" type="submit">
                 <i class="bi bi-search"></i>
@@ -120,6 +120,22 @@
           <button class="theme-toggle me-2" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
             <i class="bi bi-moon-fill" id="themeIcon"></i>
           </button>
+          
+          <!-- Search Form - Mobile (inside collapse menu) -->
+          <form action="{{ url_for('search') }}" method="GET" class="d-lg-none mt-3 mb-2 w-100 order-last">
+            <div class="input-group">
+              <input 
+                type="text" 
+                name="q" 
+                class="form-control" 
+                placeholder="Search posts..." 
+                aria-label="Search"
+              >
+              <button class="btn btn-outline-light" type="submit">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </form>
 
           <ul class="navbar-nav">
             {% if current_user %}
@@ -256,24 +272,24 @@
     <main>{% block content %}{% endblock %}</main>
 
     <!-- Footer -->
-    <footer class="bg-dark text-light py-5">
+    <footer class="bg-dark text-light py-4 py-md-5">
       <div class="container">
-        <div class="row">
-          <div class="col-lg-4 mb-4">
+        <div class="row g-4">
+          <div class="col-12 col-lg-4 text-center text-lg-start mb-3 mb-lg-0">
             <h5 class="mb-3"><i class="bi bi-robot me-2"></i>AI Blog Daily</h5>
-            <p class="text-muted">
+            <p class="text-muted small mb-0">
               Auto-generated content from the world's leading AI tools. Stay
               updated with the latest in artificial intelligence.
             </p>
           </div>
-          <div class="col-lg-4 mb-4">
-            <h6 class="text-uppercase mb-3">AI Tools</h6>
-            <ul class="list-unstyled">
+          <div class="col-6 col-lg-4 text-center text-lg-start">
+            <h6 class="text-uppercase mb-3 small fw-bold">AI Tools</h6>
+            <ul class="list-unstyled mb-0">
               {% for tool in ai_tools %}
-              <li class="mb-2">
+              <li class="mb-1">
                 <a
                   href="{{ url_for('tool_page', slug=tool.slug) }}"
-                  class="text-muted text-decoration-none"
+                  class="text-muted text-decoration-none small"
                 >
                   {{ tool.name }}
                 </a>
@@ -281,36 +297,37 @@
               {% endfor %}
             </ul>
           </div>
-          <div class="col-lg-4 mb-4">
-            <h6 class="text-uppercase mb-3">Quick Links</h6>
-            <ul class="list-unstyled">
-              <li class="mb-2">
+          <div class="col-6 col-lg-4 text-center text-lg-start">
+            <h6 class="text-uppercase mb-3 small fw-bold">Quick Links</h6>
+            <ul class="list-unstyled mb-0">
+              <li class="mb-1">
                 <a
                   href="{{ url_for('home') }}"
-                  class="text-muted text-decoration-none"
+                  class="text-muted text-decoration-none small"
                   >Home</a
                 >
               </li>
               {% if current_user %}
-              <li class="mb-2">
+              <li class="mb-1">
                 <a
                   href="{{ url_for('my_feed') }}"
-                  class="text-muted text-decoration-none"
+                  class="text-muted text-decoration-none small"
                   >My Feed</a
                 >
               </li>
-              <li class="mb-2">
+              <li class="mb-1">
                 <a
                   href="{{ url_for('subscriptions') }}"
-                  class="text-muted text-decoration-none"
+                  class="text-muted text-decoration-none small"
                   >Subscriptions</a
-                >
+                >a
+              >
               </li>
               {% else %}
-              <li class="mb-2">
+              <li class="mb-1">
                 <a
                   href="{{ url_for('register') }}"
-                  class="text-muted text-decoration-none"
+                  class="text-muted text-decoration-none small"
                   >Sign Up</a
                 >
               </li>
@@ -318,12 +335,12 @@
             </ul>
           </div>
         </div>
-        <hr class="my-4 border-secondary" />
+        <hr class="my-3 my-md-4 border-secondary" />
         <div class="row">
           <div class="col-12 text-center">
-            <div class="mb-2">
-              <a href="{{ url_for('terms') }}" class="text-muted text-decoration-none me-3"><small>Terms & Conditions</small></a>
-              <a href="{{ url_for('privacy') }}" class="text-muted text-decoration-none me-3"><small>Privacy Policy</small></a>
+            <div class="mb-2 d-flex flex-column flex-sm-row justify-content-center gap-2 gap-sm-3">
+              <a href="{{ url_for('terms') }}" class="text-muted text-decoration-none"><small>Terms & Conditions</small></a>
+              <a href="{{ url_for('privacy') }}" class="text-muted text-decoration-none"><small>Privacy Policy</small></a>
               <a href="{{ url_for('cookies') }}" class="text-muted text-decoration-none"><small>Cookie Policy</small></a>
             </div>
             <small class="text-muted">&copy; {{ current_year }} AI Blog Daily. All content is AI-generated.</small>

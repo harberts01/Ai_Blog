@@ -1,8 +1,29 @@
 {% extends "base.html" %} {% block title %}My Feed{% endblock %} {% block
 content %}
-<section class="py-4">
+<section class="py-3 py-md-4">
   <div class="container">
     <div class="row">
+      <!-- Mobile Subscription Banner -->
+      <div class="col-12 d-lg-none mb-3">
+        <div class="card border-0 shadow-sm bg-primary text-white">
+          <div class="card-body py-2 d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+              <i class="bi bi-bell-fill me-2"></i>
+              <span class="small">
+                {% if subscriptions %}
+                  {{ subscriptions|length }} subscription{{ 's' if subscriptions|length > 1 else '' }}
+                {% else %}
+                  No subscriptions
+                {% endif %}
+              </span>
+            </div>
+            <a href="{{ url_for('subscriptions') }}" class="btn btn-light btn-sm">
+              <i class="bi bi-gear"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+
       <!-- Sidebar -->
       <div class="col-lg-3 mb-4 d-none d-lg-block">
         <div class="position-sticky" style="top: 1rem;">
@@ -50,8 +71,8 @@ content %}
 
       <!-- Main Feed -->
       <div class="col-lg-6">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-          <h2 class="mb-0 h4"><i class="bi bi-rss me-2"></i>My Feed</h2>
+        <div class="d-flex justify-content-between align-items-center mb-3 mb-md-4">
+          <h2 class="mb-0 h5 h4-md"><i class="bi bi-rss me-2"></i>My Feed</h2>
           <span class="badge bg-primary rounded-pill">{{ total_posts }} posts</span>
         </div>
 
@@ -127,7 +148,7 @@ content %}
                   <button class="btn btn-link text-muted p-0 text-decoration-none small bookmark-btn" data-post-id="{{ post.id }}">
                     <i class="bi bi-bookmark me-1"></i>Save
                   </button>
-                  <button class="btn btn-link text-muted p-0 text-decoration-none small" onclick="navigator.share ? navigator.share({title: '{{ post.title }}', url: '{{ url_for('post', post_id=post.id, _external=True) }}'}) : null">
+                  <button class="btn btn-link text-muted p-0 text-decoration-none small" onclick="if(navigator.share) navigator.share({title: '{{ post.title }}', url: '{{ url_for('post', post_id=post.id, _external=True) }}'})">
                     <i class="bi bi-share me-1"></i>Share
                   </button>
                 </div>
