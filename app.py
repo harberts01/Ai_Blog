@@ -646,6 +646,29 @@ def admin_dashboard():
     return render_template("admin/dashboard.html", stats=stats, api_usage=api_usage)
 
 
+@app.route("/admin/api-errors")
+@admin_required
+def admin_api_errors():
+    """Admin page to view API error logs"""
+    page = request.args.get('page', 1, type=int)
+    days = request.args.get('days', 30, type=int)
+    per_page = 50
+    
+    errors, total = db.get_api_errors(days=days, page=page, per_page=per_page)
+    error_summary = db.get_api_error_summary(days=days)
+    total_pages = (total + per_page - 1) // per_page
+    
+    return render_template(
+        "admin/api_errors.html",
+        errors=errors,
+        error_summary=error_summary,
+        page=page,
+        total_pages=total_pages,
+        total_errors=total,
+        days=days
+    )
+
+
 @app.route("/admin/users")
 @admin_required
 def admin_users():

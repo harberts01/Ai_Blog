@@ -1271,6 +1271,90 @@ def get_api_usage_stats(days=30):
         connection.close()
 
 
+def get_api_errors(days=30, page=1, per_page=50):
+    """Get recent API errors with details for admin review"""
+    connection = get_connection()
+    if not connection:
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            # Get total count of errors
+            cursor.execute("""
+                SELECT COUNT(*) FROM APIUsage 
+                WHERE success = FALSE 
+                  AND created_at >= CURRENT_DATE - INTERVAL '%s days'
+            """, (days,))
+            total = cursor.fetchone()[0]
+            
+            # Get paginated error details
+            cursor.execute("""
+                SELECT a.usage_id, a.provider, a.model, a.error_message, a.created_at,
+                       t.name as tool_name, t.slug as tool_slug
+                FROM APIUsage a
+                LEFT JOIN AITool t ON a.tool_id = t.tool_id
+                WHERE a.success = FALSE
+                  AND a.created_at >= CURRENT_DATE - INTERVAL '%s days'
+                ORDER BY a.created_at DESC
+                LIMIT %s OFFSET %s
+            """, (days, per_page, offset))
+            errors = [
+                {
+                    'id': row[0],
+                    'provider': row[1],
+                    'model': row[2],
+                    'error_message': row[3],
+                    'created_at': row[4],
+                    'tool_name': row[5],
+                    'tool_slug': row[6]
+                }
+                for row in cursor.fetchall()
+            ]
+            return errors, total
+    except Exception as e:
+        print(f"Error getting API errors: {e}")
+        return [], 0
+    finally:
+        connection.close()
+
+
+def get_api_error_summary(days=30):
+    """Get summary of API errors grouped by provider and error type"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT a.provider, t.name as tool_name, t.slug as tool_slug,
+                       COUNT(*) as error_count,
+                       MAX(a.created_at) as last_error,
+                       array_agg(DISTINCT LEFT(a.error_message, 100)) as sample_errors
+                FROM APIUsage a
+                LEFT JOIN AITool t ON a.tool_id = t.tool_id
+                WHERE a.success = FALSE
+                  AND a.created_at >= CURRENT_DATE - INTERVAL '%s days'
+                GROUP BY a.provider, t.name, t.slug
+                ORDER BY error_count DESC
+            """, (days,))
+            return [
+                {
+                    'provider': row[0],
+                    'tool_name': row[1],
+                    'tool_slug': row[2],
+                    'error_count': row[3],
+                    'last_error': row[4],
+                    'sample_errors': row[5][:3] if row[5] else []  # Keep top 3 unique errors
+                }
+                for row in cursor.fetchall()
+            ]
+    except Exception as e:
+        print(f"Error getting API error summary: {e}")
+        return []
+    finally:
+        connection.close()
+
+
 # ============== Admin Functions ==============
 
 def get_admin_statistics():

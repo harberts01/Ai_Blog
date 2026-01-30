@@ -11,7 +11,7 @@
         </h1>
         <p class="text-muted mb-0">Overview of your AI Blog platform</p>
       </div>
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 flex-wrap">
         <a href="{{ url_for('admin_users') }}" class="btn btn-outline-primary">
           <i class="bi bi-people me-1"></i>Users
         </a>
@@ -19,6 +19,12 @@
           <i class="bi bi-chat-dots me-1"></i>Comments
           {% if stats.spam_comments > 0 %}
           <span class="badge bg-danger">{{ stats.spam_comments }}</span>
+          {% endif %}
+        </a>
+        <a href="{{ url_for('admin_api_errors') }}" class="btn btn-outline-danger">
+          <i class="bi bi-exclamation-triangle me-1"></i>API Errors
+          {% if api_usage.totals.failed_requests > 0 %}
+          <span class="badge bg-danger">{{ api_usage.totals.failed_requests }}</span>
           {% endif %}
         </a>
       </div>
@@ -141,7 +147,9 @@
                     <td class="text-end fw-semibold">${{ "%.4f"|format(tool.total_cost) }}</td>
                     <td class="text-center">
                       {% if tool.failed_requests > 0 %}
-                      <span class="badge bg-danger">{{ tool.failed_requests }}</span>
+                      <a href="{{ url_for('admin_api_errors') }}" class="badge bg-danger text-decoration-none" title="View error details">
+                        {{ tool.failed_requests }}
+                      </a>
                       {% else %}
                       <span class="text-muted">-</span>
                       {% endif %}
