@@ -164,8 +164,9 @@ class Config:
     NOTIFICATIONS_ENABLED = os.environ.get('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
     NOTIFICATIONS_MAX_AGE_DAYS = int(os.environ.get('NOTIFICATIONS_MAX_AGE_DAYS', 30))
     
-    # Scheduler settings
-    SCHEDULER_ENABLED = os.environ.get('SCHEDULER_ENABLED', 'true').lower() == 'true'
+    # Cron settings (for external scheduler like Dokploy)
+    # Generate a secure token: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    CRON_SECRET = os.environ.get('CRON_SECRET', 'change-me-in-production')
     
     # Site settings
     SITE_URL = os.environ.get('SITE_URL', 'http://localhost:5000')

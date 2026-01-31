@@ -14,7 +14,6 @@ separate modules for better maintainability:
 import os
 import re
 import logging
-import schedule
 import threading
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
@@ -819,24 +818,47 @@ def admin_generate_single_post(tool_slug):
     return redirect(url_for('admin_dashboard'))
 
 
-# ============== Scheduled Tasks ==============
+# ============== Cron Endpoints (for external scheduler like Dokploy) ==============
 
-scheduler_active = False
+@app.route("/cron/generate-posts")
+@limiter.exempt
+def cron_generate_posts():
+    """Cron endpoint for scheduled post generation (called by Dokploy)"""
+    token = request.args.get('token')
+    if not token or token != Config.CRON_SECRET:
+        logger.warning("Unauthorized cron attempt")
+        abort(403)
+    
+    logger.info("Cron: Starting post generation...")
+    ai_generators.generate_all_posts(app=app)
+    logger.info("Cron: Post generation complete")
+    return jsonify({'success': True, 'message': 'Post generation complete'})
 
 
-def cleanup_spam_comments():
-    """Delete spam comments older than 30 days"""
-    print("Running scheduled spam comment cleanup...")
-    deleted = db.delete_old_spam_comments(days=30)
-    print(f"Spam cleanup complete. Deleted {deleted} comments.")
-
-
-def run_scheduler():
-    """Run the scheduler in background"""
-    while scheduler_active:
-        schedule.run_pending()
-        import time
-        time.sleep(60)
+@app.route("/cron/cleanup")
+@limiter.exempt
+def cron_cleanup():
+    """Cron endpoint for scheduled cleanup tasks (called by Dokploy)"""
+    token = request.args.get('token')
+    if not token or token != Config.CRON_SECRET:
+        logger.warning("Unauthorized cron attempt")
+        abort(403)
+    
+    logger.info("Cron: Running cleanup tasks...")
+    
+    # Cleanup spam comments older than 30 days
+    spam_deleted = db.delete_old_spam_comments(days=30)
+    logger.info(f"Cron: Deleted {spam_deleted} old spam comments")
+    
+    # Cleanup old notifications
+    notif_deleted = db.delete_old_notifications(Config.NOTIFICATIONS_MAX_AGE_DAYS)
+    logger.info(f"Cron: Deleted {notif_deleted} old notifications")
+    
+    return jsonify({
+        'success': True,
+        'spam_deleted': spam_deleted,
+        'notifications_deleted': notif_deleted
+    })
 
 
 # ============== Error Handlers ==============
@@ -1193,34 +1215,11 @@ def notifications_recent():
 
 if __name__ == "__main__":
     print("🚀 AI Blog is starting...")
+    print("📝 Using external scheduler (Dokploy) for cron jobs")
+    print("   - POST generation: /cron/generate-posts?token=SECRET")
+    print("   - Cleanup tasks:   /cron/cleanup?token=SECRET")
     
-    # Setup scheduler with app context for notifications (if enabled)
-    if Config.SCHEDULER_ENABLED:
-        def generate_with_notifications():
-            ai_generators.generate_all_posts(app=app)
-        
-        def cleanup_old_notifications():
-            count = db.delete_old_notifications(Config.NOTIFICATIONS_MAX_AGE_DAYS)
-            if count > 0:
-                print(f"🗑️ Cleaned up {count} old notifications")
-        
-        # Run daily at 9 AM to check which tools need new posts
-        # Each tool posts once per week, so with 6 tools = ~1 post/day
-        schedule.every().day.at("09:00").do(generate_with_notifications)
-        schedule.every(30).days.do(cleanup_spam_comments)
-        schedule.every(7).days.do(cleanup_old_notifications)
-        
-        scheduler_active = True
-        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-        scheduler_thread.start()
-        
-        print("📝 Scheduler active - daily check at 9 AM (each tool posts weekly)")
-        print("🗑️ Spam cleanup scheduled - every 30 days")
-        print("🔔 Notification cleanup scheduled - every 7 days")
-    else:
-        print("📝 Scheduler disabled (set SCHEDULER_ENABLED=true to enable)")
-    
-    # Use PORT from environment for Heroku, default to 5000 locally
+    # Use PORT from environment, default to 5000 locally
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     
