@@ -157,21 +157,24 @@
                   <span class="visually-hidden">unread notifications</span>
                 </span>
               </a>
-              <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown" style="min-width: 320px; max-height: 400px; overflow-y: auto;">
+              <ul class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown" style="min-width: 320px; max-height: 400px; overflow-y: auto;">
                 <li class="dropdown-header d-flex justify-content-between align-items-center px-3 py-2">
-                  <span><i class="bi bi-bell me-2"></i>Notifications</span>
-                  <a href="#" class="text-info small" id="markAllReadBtn" onclick="markAllRead(event)">Mark all read</a>
+                  <span class="notification-dropdown-title"><i class="bi bi-bell me-2"></i>Notifications</span>
+                  <div class="d-flex gap-2">
+                    <a href="#" class="notification-dropdown-link small" id="markAllReadBtn" onclick="markAllRead(event)" title="Mark all as read"><i class="bi bi-check-all"></i></a>
+                    <a href="#" class="notification-dropdown-link small text-danger" id="clearAllBtn" onclick="clearAllNotifications(event)" title="Clear all"><i class="bi bi-trash"></i></a>
+                  </div>
                 </li>
                 <li><hr class="dropdown-divider my-1" /></li>
                 <div id="notificationList">
-                  <li class="text-center text-muted py-3">
-                    <i class="bi bi-inbox fs-4 d-block mb-2"></i>
-                    <small>Loading notifications...</small>
+                  <li class="text-center py-3">
+                    <i class="bi bi-inbox fs-4 d-block mb-2 text-muted"></i>
+                    <small class="text-muted">Loading notifications...</small>
                   </li>
                 </div>
                 <li><hr class="dropdown-divider my-1" /></li>
                 <li class="text-center py-2">
-                  <a href="{{ url_for('notifications') }}" class="text-info small">View all notifications</a>
+                  <a href="{{ url_for('notifications') }}" class="notification-dropdown-link small">View all notifications</a>
                 </li>
               </ul>
             </li>
@@ -629,7 +632,30 @@
         event.stopPropagation();
         fetch('/notifications/mark-all-read', {
           method: 'POST',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          headers: { 
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: 'csrf_token={{ csrf_token() }}'
+        })
+        .then(response => response.json())
+        .then(data => {
+          loadNotificationCount();
+          loadNotifications();
+        });
+      }
+
+      function clearAllNotifications(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!confirm('Clear all notifications? This cannot be undone.')) return;
+        fetch('/notifications/clear-all', {
+          method: 'POST',
+          headers: { 
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: 'csrf_token={{ csrf_token() }}'
         })
         .then(response => response.json())
         .then(data => {

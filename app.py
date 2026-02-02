@@ -1488,6 +1488,18 @@ def mark_all_notifications_read():
     return redirect(url_for('notifications'))
 
 
+@app.route("/notifications/clear-all", methods=["POST"])
+@login_required
+def clear_all_notifications():
+    """Delete all notifications for the current user"""
+    user = get_current_user()
+    count = db.clear_user_notifications(user['id'])
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': True, 'deleted_count': count})
+    flash(f'Cleared {count} notifications', 'success')
+    return redirect(url_for('notifications'))
+
+
 @app.route("/notifications/recent")
 @limiter.exempt
 @login_required  

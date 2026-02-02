@@ -1011,6 +1011,56 @@ footer .text-muted {
   background-color: var(--bg-tertiary);
 }
 
+/* Dark mode notification dropdown */
+[data-theme="dark"] .notification-dropdown {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .notification-dropdown .dropdown-header {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .notification-dropdown .dropdown-divider {
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .notification-dropdown-title {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .notification-dropdown-link {
+  color: #818cf8;
+}
+
+[data-theme="dark"] .notification-dropdown-link:hover {
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .notification-item {
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .notification-item:hover {
+  background: var(--bg-tertiary);
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .notification-item.unread {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+[data-theme="dark"] .notification-item .notification-title {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .notification-item .notification-message,
+[data-theme="dark"] .notification-item .notification-time {
+  color: #9ca3af;
+}
+
 [data-theme="dark"] .list-group-item {
   background-color: var(--bg-secondary);
   border-color: var(--border-color);
@@ -1248,27 +1298,60 @@ footer .text-muted {
 }
 
 .notification-dropdown {
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  background-color: #fff;
+  border: 1px solid #e5e7eb;
 }
 
 .notification-dropdown .dropdown-header {
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.05);
+  background: #f9fafb;
+  color: #374151;
+}
+
+.notification-dropdown .dropdown-divider {
+  border-color: #e5e7eb;
+}
+
+.notification-dropdown-title {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.notification-dropdown-link {
+  color: #4f46e5;
+  text-decoration: none;
+}
+
+.notification-dropdown-link:hover {
+  color: #4338ca;
+  text-decoration: underline;
 }
 
 .notification-item {
   padding: 0.75rem 1rem;
   border-left: 3px solid transparent;
   transition: all 0.2s ease;
+  color: #374151;
 }
 
 .notification-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #f3f4f6;
+  color: #1f2937;
 }
 
 .notification-item.unread {
-  background: rgba(79, 70, 229, 0.1);
+  background: rgba(79, 70, 229, 0.08);
   border-left-color: var(--primary-color);
+}
+
+.notification-item .notification-title {
+  color: #1f2937;
+}
+
+.notification-item .notification-message,
+.notification-item .notification-time {
+  color: #6b7280;
 }
 
 .notification-icon {
