@@ -162,7 +162,7 @@
                   <span class="notification-dropdown-title"><i class="bi bi-bell me-2"></i>Notifications</span>
                   <div class="d-flex gap-2">
                     <a href="#" class="notification-dropdown-link small" id="markAllReadBtn" onclick="markAllRead(event)" title="Mark all as read"><i class="bi bi-check-all"></i></a>
-                    <a href="#" class="notification-dropdown-link small text-danger" id="clearAllBtn" onclick="clearAllNotifications(event)" title="Clear all"><i class="bi bi-trash"></i></a>
+                    <a href="#" class="notification-dropdown-link small" id="dismissAllBtn" onclick="dismissDropdownNotifications(event)" title="Dismiss all"><i class="bi bi-x-circle"></i></a>
                   </div>
                 </li>
                 <li><hr class="dropdown-divider my-1" /></li>
@@ -645,11 +645,11 @@
         });
       }
 
-      function clearAllNotifications(event) {
+      function dismissDropdownNotifications(event) {
         event.preventDefault();
         event.stopPropagation();
-        if (!confirm('Clear all notifications? This cannot be undone.')) return;
-        fetch('/notifications/clear-all', {
+        // Mark all as read in database
+        fetch('/notifications/mark-all-read', {
           method: 'POST',
           headers: { 
             'X-Requested-With': 'XMLHttpRequest',
@@ -659,8 +659,15 @@
         })
         .then(response => response.json())
         .then(data => {
-          loadNotificationCount();
-          loadNotifications();
+          // Clear badge count
+          updateBadge(0);
+          // Show empty state in dropdown
+          document.getElementById('notificationList').innerHTML = `
+            <li class="text-center py-3">
+              <i class="bi bi-check-circle fs-4 d-block mb-2 text-success"></i>
+              <small class="text-muted">All caught up!</small>
+            </li>
+          `;
         });
       }
     </script>

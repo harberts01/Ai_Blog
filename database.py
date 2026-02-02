@@ -2024,23 +2024,6 @@ def mark_all_notifications_read(user_id):
         connection.close()
 
 
-def clear_user_notifications(user_id):
-    """Delete all notifications for a user"""
-    connection = get_connection()
-    if not connection:
-        return 0
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM Notification WHERE user_id = %s",
-                (user_id,)
-            )
-            connection.commit()
-            return cursor.rowcount
-    finally:
-        connection.close()
-
-
 def delete_old_notifications(days=30):
     """Delete notifications older than specified days"""
     connection = get_connection()
