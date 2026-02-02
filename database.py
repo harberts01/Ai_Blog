@@ -2550,20 +2550,31 @@ def get_user_free_post_views_this_month(user_id):
 
 def record_free_post_view(user_id, post_id):
     """Record a free post view (for tracking limits)"""
+    from datetime import datetime
     connection = get_connection()
     if not connection:
         return False
     try:
+        month_year = datetime.now().strftime('%Y-%m')
         with connection.cursor() as cursor:
-            # Use ON CONFLICT to avoid duplicates
+            # Check if already viewed this post this month
             cursor.execute("""
-                INSERT INTO FreePostView (user_id, post_id)
-                VALUES (%s, %s)
-                ON CONFLICT (user_id, post_id) DO NOTHING
-            """, (user_id, post_id))
+                SELECT 1 FROM FreePostView 
+                WHERE user_id = %s AND post_id = %s AND month_year = %s
+            """, (user_id, post_id, month_year))
+            
+            if cursor.fetchone():
+                return True  # Already recorded
+            
+            # Insert new view record
+            cursor.execute("""
+                INSERT INTO FreePostView (user_id, post_id, month_year)
+                VALUES (%s, %s, %s)
+            """, (user_id, post_id, month_year))
             connection.commit()
             return True
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error recording free post view: {e}")
         return False
     finally:
         connection.close()
