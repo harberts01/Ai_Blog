@@ -56,10 +56,12 @@
 }
 
 .text-gemini {
+  color: #4285f4 !important; /* Fallback color for mobile */
   background: linear-gradient(135deg, #4285f4, #ea4335, #fbbc04, #34a853);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  text-fill-color: transparent;
 }
 
 .text-midjourney {
@@ -71,7 +73,7 @@
 }
 
 .text-grok {
-  color: #1d9bf0 !important; /* X/Twitter blue */
+  color: #000000 !important; /* xAI black */
 }
 
 .text-copilot {
