@@ -1307,15 +1307,63 @@ footer .text-muted {
 .notification-card {
   border-left: 4px solid transparent;
   transition: all 0.2s ease;
+  background-color: #fff;
 }
 
 .notification-card.unread {
   border-left-color: var(--primary-color);
-  background: rgba(79, 70, 229, 0.05);
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.notification-card:not(.unread) {
+  opacity: 0.65;
 }
 
 .notification-card:hover {
   box-shadow: var(--shadow);
+  opacity: 1;
+}
+
+.notification-card h6 {
+  color: #1f2937;
+}
+
+.notification-card p {
+  color: #6b7280;
+}
+
+/* Dark mode notification styles */
+[data-theme="dark"] .notification-card {
+  background-color: var(--bg-secondary);
+}
+
+[data-theme="dark"] .notification-card.unread {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+[data-theme="dark"] .notification-card h6 {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .notification-card p {
+  color: #9ca3af;
+}
+
+/* Notifications page */
+.notifications-page {
+  background-color: #f3f4f6;
+}
+
+.notification-page-title {
+  color: #1f2937;
+}
+
+[data-theme="dark"] .notifications-page {
+  background-color: var(--bg-primary);
+}
+
+[data-theme="dark"] .notification-page-title {
+  color: #f3f4f6;
 }
 
 /* ========== Touch-Friendly Enhancements ========== */
