@@ -134,12 +134,22 @@ a:hover {
 
 /* ========== Navbar ========== */
 .navbar {
-  padding: 0.75rem 0;
+  padding: 1rem 0;
   box-shadow: var(--shadow-sm);
+  min-height: 50px;
+}
+
+.navbar > .container,
+.navbar > .container-fluid {
+  display: flex;
+  align-items: center;
+  min-height: inherit;
 }
 
 .navbar-brand {
   font-size: 1.25rem;
+  display: flex;
+  align-items: center;
 }
 
 .navbar-dark .navbar-nav .nav-link {
@@ -197,6 +207,15 @@ a:hover {
 
 .bg-gradient-primary {
   background: linear-gradient(135deg, var(--primary-color) 0%, #7c3aed 100%);
+}
+
+.bg-gradient-warning {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+}
+
+/* Free tier banner */
+.free-tier-banner {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 /* ========== Cards ========== */

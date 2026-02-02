@@ -85,8 +85,126 @@ block content %}
         </header>
 
         <!-- Post Content -->
+        {% if can_view_full %}
         <div class="post-content">{{ post.content|safe }}</div>
+        {% else %}
+        <!-- Content Preview with Paywall -->
+        <div class="post-content-preview">
+          <!-- Show first ~300 characters with fade -->
+          <div class="content-preview" style="position: relative;">
+            {{ post.content|safe|truncate(500, killwords=False, end='') }}
+            <div class="content-fade"></div>
+          </div>
+          
+          <!-- Paywall Banner -->
+          <div class="paywall-banner">
+            <div class="paywall-content">
+              <div class="paywall-icon">
+                <i class="bi bi-lock-fill"></i>
+              </div>
+              
+              {% if limit_reason == 'not_logged_in' %}
+              <h4 class="fw-bold mb-2">Sign in to continue reading</h4>
+              <p class="text-muted mb-4">
+                Create a free account to access up to 5 full articles per month, 
+                or upgrade to Premium for unlimited access.
+              </p>
+              <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
+                <a href="{{ url_for('login', next=request.url) }}" class="btn btn-primary">
+                  <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+                </a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-primary">
+                  <i class="bi bi-person-plus me-2"></i>Create Account
+                </a>
+              </div>
+              
+              {% elif limit_reason == 'limit_reached' %}
+              <h4 class="fw-bold mb-2">You've reached your free article limit</h4>
+              <p class="text-muted mb-3">
+                You've read all {{ FREE_POSTS_PER_MONTH }} free articles this month. 
+                Upgrade to Premium for unlimited access to all content.
+              </p>
+              <div class="premium-benefits mb-4">
+                <div class="benefit-item"><i class="bi bi-check-circle-fill text-success"></i> Unlimited article access</div>
+                <div class="benefit-item"><i class="bi bi-check-circle-fill text-success"></i> Instant access to new posts</div>
+                <div class="benefit-item"><i class="bi bi-check-circle-fill text-success"></i> Full AI comparison features</div>
+              </div>
+              <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-gem me-2"></i>Upgrade to Premium - $4.99/mo
+              </a>
+              <p class="small text-muted mt-3 mb-0">
+                Or wait until next month for 5 more free articles
+              </p>
+              
+              {% else %}
+              <h4 class="fw-bold mb-2">Premium Content</h4>
+              <p class="text-muted mb-4">
+                This is a new article. Free users can access it in 
+                {{ FREE_POST_DELAY_DAYS }} days, or upgrade now for instant access.
+              </p>
+              <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
+                <a href="{{ url_for('pricing') }}" class="btn btn-primary">
+                  <i class="bi bi-gem me-2"></i>Get Premium Access
+                </a>
+                <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+                  <i class="bi bi-arrow-left me-2"></i>Browse Other Articles
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        <style>
+          .content-preview {
+            max-height: 300px;
+            overflow: hidden;
+          }
+          .content-fade {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 150px;
+            background: linear-gradient(transparent, white);
+          }
+          .paywall-banner {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 16px;
+            padding: 2.5rem;
+            text-align: center;
+            margin-top: -50px;
+            position: relative;
+            border: 1px solid #dee2e6;
+          }
+          .paywall-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+          }
+          .paywall-icon i {
+            font-size: 1.75rem;
+            color: white;
+          }
+          .premium-benefits {
+            display: inline-block;
+            text-align: left;
+          }
+          .benefit-item {
+            padding: 0.35rem 0;
+          }
+          .benefit-item i {
+            margin-right: 0.5rem;
+          }
+        </style>
+        {% endif %}
 
+        {% if can_view_full %}
         <!-- Share Buttons -->
         <div class="border-top border-bottom py-3 py-md-4 my-3 my-md-4">
           <div
@@ -175,6 +293,7 @@ block content %}
           </div>
           {% endif %}
         </section>
+        {% endif %}
       </div>
     </div>
   </div>

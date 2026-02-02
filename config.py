@@ -30,6 +30,26 @@ class Config:
     # Flask settings
     SECRET_KEY = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
     
+    # ============== Stripe Payment Settings ==============
+    # Get these from: https://dashboard.stripe.com/apikeys
+    STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+    
+    # Webhook secret from: https://dashboard.stripe.com/webhooks
+    STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+    
+    # Stripe Price IDs - create these in Stripe Dashboard
+    # Go to: Products > Create Product > Add Pricing
+    STRIPE_PRICE_MONTHLY = os.environ.get('STRIPE_PRICE_MONTHLY', '')  # e.g., price_xxx
+    STRIPE_PRICE_ANNUAL = os.environ.get('STRIPE_PRICE_ANNUAL', '')    # e.g., price_yyy
+    
+    # Optional: Free trial period (days) - 0 for no trial
+    TRIAL_DAYS = int(os.environ.get('TRIAL_DAYS', '0'))
+    
+    # Free tier limits
+    FREE_POSTS_PER_MONTH = int(os.environ.get('FREE_POSTS_PER_MONTH', '5'))
+    FREE_POST_DELAY_DAYS = int(os.environ.get('FREE_POST_DELAY_DAYS', '14'))
+    
     # PostgreSQL Database settings
     # Support both Heroku's DATABASE_URL and individual env vars
     DATABASE_URL = os.environ.get('DATABASE_URL')

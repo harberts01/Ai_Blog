@@ -96,10 +96,25 @@ def add_security_headers(response):
 @app.context_processor
 def inject_globals():
     """Inject global variables into all templates"""
+    user = get_current_user()
+    is_premium = False
+    free_posts_remaining = 0
+    
+    if user:
+        is_premium = db.is_user_premium(user['id'])
+        if not is_premium:
+            views_this_month = db.get_user_free_post_views_this_month(user['id'])
+            free_posts_remaining = max(0, Config.FREE_POSTS_PER_MONTH - views_this_month)
+    
     return {
-        'current_user': get_current_user(),
+        'current_user': user,
         'ai_tools': db.get_all_tools(),
-        'current_year': datetime.now().year
+        'current_year': datetime.now().year,
+        'now': datetime.now(),
+        'is_premium': is_premium,
+        'free_posts_remaining': free_posts_remaining,
+        'FREE_POSTS_PER_MONTH': Config.FREE_POSTS_PER_MONTH,
+        'FREE_POST_DELAY_DAYS': Config.FREE_POST_DELAY_DAYS
     }
 
 
@@ -209,10 +224,50 @@ def post(post_id):
     # Check if user has bookmarked this post
     is_bookmarked = False
     user = get_current_user()
+    is_premium = False
+    can_view_full = True
+    limit_reason = None
+    free_posts_remaining = 5
+    
     if user:
         is_bookmarked = db.is_bookmarked(user['id'], post_id)
+        is_premium = db.is_user_premium(user['id'])
+        
+        if not is_premium:
+            # Check if user can view this post
+            can_view, reason = db.can_user_view_post(
+                user['id'], 
+                post_id, 
+                post_data['created_at'],
+                free_post_limit=Config.FREE_POSTS_PER_MONTH,
+                delay_days=Config.FREE_POST_DELAY_DAYS
+            )
+            
+            if can_view and reason == 'within_limit':
+                # Record the view if it's a new view within their limit
+                if not db.has_user_viewed_post(user['id'], post_id):
+                    db.record_free_post_view(user['id'], post_id)
+            
+            can_view_full = can_view
+            limit_reason = reason
+            views_this_month = db.get_user_free_post_views_this_month(user['id'])
+            free_posts_remaining = max(0, Config.FREE_POSTS_PER_MONTH - views_this_month)
+    else:
+        # Anonymous users get limited preview
+        from datetime import datetime, timedelta
+        delay_threshold = datetime.now() - timedelta(days=Config.FREE_POST_DELAY_DAYS)
+        if post_data['created_at'] >= delay_threshold:
+            can_view_full = False
+            limit_reason = 'not_logged_in'
     
-    return render_template("post.html", post=post_data, comments=comments, is_bookmarked=is_bookmarked)
+    return render_template("post.html", 
+                          post=post_data, 
+                          comments=comments, 
+                          is_bookmarked=is_bookmarked,
+                          is_premium=is_premium,
+                          can_view_full=can_view_full,
+                          limit_reason=limit_reason,
+                          free_posts_remaining=free_posts_remaining)
 
 
 @app.route("/post/<int:post_id>/comment", methods=["POST"])
@@ -295,7 +350,7 @@ def register():
 
 
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("5 per minute")
+@limiter.limit("20 per minute")
 def login():
     """User login"""
     if get_current_user():
@@ -556,6 +611,254 @@ def delete_account():
     else:
         flash('Failed to delete account', 'danger')
         return redirect(url_for('account'))
+
+
+# ============== Subscription & Payments ==============
+
+@app.route("/pricing")
+def pricing():
+    """Display pricing/subscription plans"""
+    plans = db.get_all_subscription_plans()
+    user = get_current_user()
+    
+    current_subscription = None
+    if user:
+        current_subscription = db.get_user_subscription(user['id'])
+    
+    return render_template("pricing.html", 
+                          plans=plans,
+                          current_subscription=current_subscription,
+                          stripe_publishable_key=Config.STRIPE_PUBLISHABLE_KEY)
+
+
+@app.route("/checkout/<plan_type>")
+@login_required
+def checkout_plan(plan_type):
+    """Start subscription checkout process"""
+    import stripe_utils
+    
+    user = get_current_user()
+    
+    # Validate plan type
+    if plan_type not in ['monthly', 'annual']:
+        flash('Invalid subscription plan', 'danger')
+        return redirect(url_for('pricing'))
+    
+    # Get price ID based on plan type
+    if plan_type == 'monthly':
+        price_id = Config.STRIPE_PRICE_MONTHLY
+    else:
+        price_id = Config.STRIPE_PRICE_ANNUAL
+    
+    if not price_id:
+        flash('Subscription plans are not configured. Please try again later.', 'danger')
+        return redirect(url_for('pricing'))
+    
+    try:
+        # Create checkout session
+        user_data = {
+            'user_id': user['id'],
+            'email': user['email'],
+            'username': user['username'],
+            'stripe_customer_id': db.get_user_by_email(user['email']).get('stripe_customer_id')
+        }
+        
+        success_url = url_for('checkout_success', _external=True)
+        cancel_url = url_for('checkout_cancel', _external=True)
+        
+        session = stripe_utils.create_checkout_session(
+            user_data, price_id, success_url, cancel_url
+        )
+        
+        return redirect(session.url)
+        
+    except Exception as e:
+        logger.error(f"Checkout error: {e}")
+        flash('Unable to start checkout. Please try again.', 'danger')
+        return redirect(url_for('pricing'))
+
+
+@app.route("/checkout/success")
+@login_required
+def checkout_success():
+    """Handle successful checkout - also provisions subscription for local dev"""
+    import stripe_utils
+    
+    session_id = request.args.get('session_id')
+    user = get_current_user()
+    
+    # Try to provision the subscription from the checkout session
+    # This is needed for local development where webhooks don't work
+    if session_id:
+        try:
+            checkout_session = stripe_utils.stripe.checkout.Session.retrieve(
+                session_id,
+                expand=['subscription', 'customer']
+            )
+            
+            if checkout_session.payment_status == 'paid':
+                stripe_sub = checkout_session.subscription
+                stripe_customer_id = checkout_session.customer.id if hasattr(checkout_session.customer, 'id') else checkout_session.customer
+                
+                # Update user's stripe customer ID
+                db.update_user_stripe_customer_id(user['id'], stripe_customer_id)
+                
+                # Check if subscription already exists
+                existing_sub = db.get_user_subscription(user['id'])
+                
+                if not existing_sub or existing_sub.get('status') != 'active':
+                    # Get the subscription details
+                    if isinstance(stripe_sub, str):
+                        stripe_sub = stripe_utils.stripe.Subscription.retrieve(stripe_sub)
+                    
+                    # Determine plan based on interval
+                    plan_name = 'premium_monthly'
+                    if stripe_sub.items.data[0].price.recurring.interval == 'year':
+                        plan_name = 'premium_annual'
+                    
+                    plan = db.get_subscription_plan_by_name(plan_name)
+                    if plan:
+                        from datetime import datetime
+                        db.upsert_user_subscription(
+                            user_id=user['id'],
+                            plan_id=plan['plan_id'],
+                            stripe_subscription_id=stripe_sub.id,
+                            stripe_customer_id=stripe_customer_id,
+                            status='active',
+                            current_period_start=datetime.fromtimestamp(stripe_sub.current_period_start),
+                            current_period_end=datetime.fromtimestamp(stripe_sub.current_period_end)
+                        )
+                        logger.info(f"Provisioned subscription for user {user['id']} from checkout session")
+        except Exception as e:
+            logger.error(f"Error provisioning subscription from checkout: {e}")
+    
+    return render_template("checkout_success.html", session_id=session_id)
+
+
+@app.route("/checkout/cancel")
+@login_required
+def checkout_cancel():
+    """Handle cancelled checkout"""
+    flash('Checkout was cancelled. No charges were made.', 'info')
+    return redirect(url_for('pricing'))
+
+
+@app.route("/account/billing")
+@login_required
+def billing():
+    """User billing/subscription management"""
+    import stripe_utils
+    
+    user = get_current_user()
+    subscription = db.get_user_subscription(user['id'])
+    payment_history = db.get_user_payment_history(user['id'])
+    
+    # Generate portal link if user has a subscription
+    portal_url = None
+    if subscription and subscription.get('stripe_customer_id'):
+        try:
+            portal_session = stripe_utils.create_billing_portal_session(
+                subscription['stripe_customer_id'],
+                url_for('billing', _external=True)
+            )
+            portal_url = portal_session.url
+        except Exception as e:
+            logger.error(f"Failed to create billing portal session: {e}")
+    
+    return render_template("billing.html",
+                          subscription=subscription,
+                          payment_history=payment_history,
+                          portal_url=portal_url)
+
+
+@app.route("/account/cancel-subscription", methods=["POST"])
+@login_required
+def cancel_subscription():
+    """Cancel user's subscription at period end"""
+    import stripe_utils
+    
+    user = get_current_user()
+    subscription = db.get_user_subscription(user['id'])
+    
+    if not subscription or not subscription.get('stripe_subscription_id'):
+        flash('No active subscription found.', 'error')
+        return redirect(url_for('billing'))
+    
+    try:
+        # Cancel at period end (user keeps access until then)
+        stripe_utils.cancel_subscription(subscription['stripe_subscription_id'], at_period_end=True)
+        
+        # Update local database
+        db.update_user_subscription_cancel_at_period_end(user['id'], True)
+        
+        flash('Your subscription has been cancelled. You will have access until the end of your billing period.', 'success')
+        logger.info(f"User {user['id']} cancelled subscription {subscription['stripe_subscription_id']}")
+    except Exception as e:
+        logger.error(f"Failed to cancel subscription for user {user['id']}: {e}")
+        flash('Failed to cancel subscription. Please try again or contact support.', 'error')
+    
+    return redirect(url_for('billing'))
+
+
+@app.route("/account/reactivate-subscription", methods=["POST"])
+@login_required
+def reactivate_subscription():
+    """Reactivate a subscription that was set to cancel"""
+    import stripe_utils
+    
+    user = get_current_user()
+    subscription = db.get_user_subscription(user['id'])
+    
+    if not subscription or not subscription.get('stripe_subscription_id'):
+        flash('No subscription found to reactivate.', 'error')
+        return redirect(url_for('billing'))
+    
+    try:
+        # Reactivate subscription
+        stripe_utils.reactivate_subscription(subscription['stripe_subscription_id'])
+        
+        # Update local database
+        db.update_user_subscription_cancel_at_period_end(user['id'], False)
+        
+        flash('Your subscription has been reactivated! You will continue to be billed.', 'success')
+        logger.info(f"User {user['id']} reactivated subscription {subscription['stripe_subscription_id']}")
+    except Exception as e:
+        logger.error(f"Failed to reactivate subscription for user {user['id']}: {e}")
+        flash('Failed to reactivate subscription. Please try again or contact support.', 'error')
+    
+    return redirect(url_for('billing'))
+
+
+@app.route("/webhooks/stripe", methods=["POST"])
+@csrf.exempt  # Stripe webhooks don't use CSRF tokens
+@limiter.exempt
+def stripe_webhook():
+    """Handle Stripe webhook events"""
+    import stripe_utils
+    
+    payload = request.get_data()
+    sig_header = request.headers.get('Stripe-Signature')
+    
+    if not sig_header:
+        return jsonify({'error': 'No signature'}), 400
+    
+    try:
+        event = stripe_utils.construct_webhook_event(payload, sig_header)
+    except ValueError as e:
+        logger.error(f"Invalid webhook payload: {e}")
+        return jsonify({'error': 'Invalid payload'}), 400
+    except Exception as e:
+        logger.error(f"Webhook signature verification failed: {e}")
+        return jsonify({'error': 'Invalid signature'}), 400
+    
+    # Process the event
+    try:
+        stripe_utils.process_webhook_event(event)
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        # Still return 200 to acknowledge receipt
+    
+    return jsonify({'status': 'received'}), 200
 
 
 @app.route("/feed")

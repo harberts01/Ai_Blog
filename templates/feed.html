@@ -132,6 +132,16 @@ content %}
                 <a href="{{ url_for('post', post_id=post.id) }}" class="text-decoration-none text-dark stretched-link-title">
                   {{ post.title }}
                 </a>
+                {% set days_old = (now - post.created_at).days if post.created_at else 999 %}
+                {% if days_old < FREE_POST_DELAY_DAYS %}
+                <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">
+                  {% if is_premium %}
+                  <i class="bi bi-gem me-1"></i>NEW
+                  {% else %}
+                  <i class="bi bi-lock-fill me-1"></i>PREMIUM
+                  {% endif %}
+                </span>
+                {% endif %}
               </h5>
               <p class="card-text text-muted mb-0" style="line-height: 1.7;">
                 {{ post.content|striptags|truncate(300) }}

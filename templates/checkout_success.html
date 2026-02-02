@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to Premium! - AI Blog{% endblock %}
+
+{% block extra_css %}
+<style>
+    .success-page {
+        min-height: 70vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .success-card {
+        max-width: 500px;
+        text-align: center;
+        padding: 3rem;
+        border-radius: 20px;
+    }
+    
+    .success-icon {
+        width: 100px;
+        height: 100px;
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 2rem;
+        animation: scaleIn 0.5s ease-out;
+    }
+    
+    .success-icon i {
+        font-size: 3rem;
+        color: white;
+    }
+    
+    @keyframes scaleIn {
+        0% {
+            transform: scale(0);
+        }
+        50% {
+            transform: scale(1.2);
+        }
+        100% {
+            transform: scale(1);
+        }
+    }
+    
+    .confetti {
+        position: fixed;
+        width: 10px;
+        height: 10px;
+        background: #f00;
+        top: -10px;
+        animation: confetti-fall 4s linear forwards;
+    }
+    
+    @keyframes confetti-fall {
+        to {
+            transform: translateY(100vh) rotate(720deg);
+            opacity: 0;
+        }
+    }
+    
+    .feature-unlocked {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        text-align: left;
+    }
+    
+    .feature-unlocked i {
+        color: #28a745;
+        margin-right: 1rem;
+        font-size: 1.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="success-page">
+    <div class="card success-card shadow-lg">
+        <div class="success-icon">
+            <i class="bi bi-check-lg"></i>
+        </div>
+        
+        <h1 class="h2 fw-bold mb-3">Welcome to Premium! 🎉</h1>
+        <p class="text-muted mb-4">
+            Your subscription is now active. Thank you for supporting AI Blog!
+        </p>
+        
+        <div class="mb-4">
+            <h6 class="fw-bold mb-3">You've unlocked:</h6>
+            
+            <div class="feature-unlocked">
+                <i class="bi bi-infinity"></i>
+                <span>Unlimited article access</span>
+            </div>
+            
+            <div class="feature-unlocked">
+                <i class="bi bi-lightning-charge-fill"></i>
+                <span>Instant access to new posts</span>
+            </div>
+            
+            <div class="feature-unlocked">
+                <i class="bi bi-bar-chart-fill"></i>
+                <span>Full AI comparison features</span>
+            </div>
+            
+            <div class="feature-unlocked">
+                <i class="bi bi-headset"></i>
+                <span>Priority support</span>
+            </div>
+        </div>
+        
+        <div class="d-grid gap-2">
+            <a href="{{ url_for('my_feed') }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-newspaper me-2"></i>Start Reading
+            </a>
+            <a href="{{ url_for('billing') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-gear me-2"></i>Manage Subscription
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Simple confetti effect
+function createConfetti() {
+    const colors = ['#667eea', '#764ba2', '#28a745', '#ffc107', '#17a2b8'];
+    
+    for (let i = 0; i < 50; i++) {
+        setTimeout(() => {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.left = Math.random() * 100 + 'vw';
+            confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+            confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            confetti.style.width = confetti.style.height = (Math.random() * 8 + 6) + 'px';
+            document.body.appendChild(confetti);
+            
+            setTimeout(() => confetti.remove(), 4000);
+        }, i * 50);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', createConfetti);
+</script>
+{% endblock %}

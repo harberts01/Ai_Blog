@@ -2057,3 +2057,531 @@ def get_subscriber_user_ids_by_tool(tool_id):
             return [row[0] for row in cursor.fetchall()]
     finally:
         connection.close()
+
+
+# ============== Premium Subscription Functions ==============
+
+def get_all_subscription_plans():
+    """Get all available subscription plans"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT plan_id, name, display_name, description, price_cents, 
+                       interval, interval_count, stripe_price_id,
+                       features, is_active, created_at
+                FROM SubscriptionPlan 
+                WHERE is_active = TRUE
+                ORDER BY price_cents ASC
+            """)
+            return cursor.fetchall()
+    except Exception:
+        return []
+    finally:
+        connection.close()
+
+
+def get_plan_by_id(plan_id):
+    """Get a subscription plan by ID"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT plan_id, name, display_name, description, price_cents, 
+                       interval, interval_count, stripe_price_id,
+                       features, is_active, created_at
+                FROM SubscriptionPlan 
+                WHERE plan_id = %s
+            """, (plan_id,))
+            return cursor.fetchone()
+    except Exception:
+        return None
+    finally:
+        connection.close()
+
+
+def get_subscription_plan_by_name(name):
+    """Get a subscription plan by name"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT plan_id, name, display_name, description, price_cents, 
+                       interval, interval_count, stripe_price_id,
+                       features, is_active, created_at
+                FROM SubscriptionPlan 
+                WHERE name = %s
+            """, (name,))
+            return cursor.fetchone()
+    except Exception:
+        return None
+    finally:
+        connection.close()
+
+
+def get_plan_by_stripe_price_id(price_id):
+    """Get a subscription plan by Stripe price ID"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT plan_id, name, display_name, description, price_cents, 
+                       interval, interval_count, stripe_price_id,
+                       features, is_active, created_at
+                FROM SubscriptionPlan 
+                WHERE stripe_price_id = %s
+            """, (price_id,))
+            return cursor.fetchone()
+    except Exception:
+        return None
+    finally:
+        connection.close()
+
+
+def update_plan_stripe_price_id(plan_id, stripe_price_id):
+    """Update Stripe price ID for a plan"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE SubscriptionPlan 
+                SET stripe_price_id = %s 
+                WHERE plan_id = %s
+            """, (stripe_price_id, plan_id))
+            connection.commit()
+            return True
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def get_user_subscription(user_id):
+    """Get a user's current subscription details"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT us.*, sp.name as plan_name, sp.display_name,
+                       sp.price_cents, sp.interval, sp.features
+                FROM UserSubscription us
+                JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                WHERE us.user_id = %s
+            """, (user_id,))
+            return cursor.fetchone()
+    except Exception as e:
+        print(f"Error getting user subscription: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def get_user_subscription_by_stripe_id(stripe_subscription_id):
+    """Get user subscription by Stripe subscription ID"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT us.*, sp.name as plan_name, sp.display_name
+                FROM UserSubscription us
+                JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                WHERE us.stripe_subscription_id = %s
+            """, (stripe_subscription_id,))
+            return cursor.fetchone()
+    except Exception:
+        return None
+    finally:
+        connection.close()
+
+
+def upsert_user_subscription(user_id, plan_id, stripe_customer_id, stripe_subscription_id,
+                              status, current_period_start, current_period_end, trial_end=None):
+    """Create or update a user's subscription"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO UserSubscription (
+                    user_id, plan_id, stripe_customer_id, stripe_subscription_id,
+                    status, current_period_start, current_period_end, trial_end
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    plan_id = EXCLUDED.plan_id,
+                    stripe_customer_id = EXCLUDED.stripe_customer_id,
+                    stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+                    status = EXCLUDED.status,
+                    current_period_start = EXCLUDED.current_period_start,
+                    current_period_end = EXCLUDED.current_period_end,
+                    trial_end = EXCLUDED.trial_end,
+                    updated_at = NOW()
+            """, (user_id, plan_id, stripe_customer_id, stripe_subscription_id,
+                  status, current_period_start, current_period_end, trial_end))
+            connection.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Error upserting subscription: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def update_user_subscription(user_id, plan_id=None, status=None, 
+                              current_period_start=None, current_period_end=None,
+                              cancel_at_period_end=None):
+    """Update specific fields of a user's subscription"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            updates = []
+            params = []
+            
+            if plan_id is not None:
+                updates.append("plan_id = %s")
+                params.append(plan_id)
+            if status is not None:
+                updates.append("status = %s")
+                params.append(status)
+            if current_period_start is not None:
+                updates.append("current_period_start = %s")
+                params.append(current_period_start)
+            if current_period_end is not None:
+                updates.append("current_period_end = %s")
+                params.append(current_period_end)
+            if cancel_at_period_end is not None:
+                updates.append("cancel_at_period_end = %s")
+                params.append(cancel_at_period_end)
+            
+            if not updates:
+                return False
+                
+            updates.append("updated_at = NOW()")
+            params.append(user_id)
+            
+            cursor.execute(f"""
+                UPDATE UserSubscription 
+                SET {', '.join(updates)}
+                WHERE user_id = %s
+            """, params)
+            connection.commit()
+            return True
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def update_user_subscription_status(user_id, status, canceled_at=None):
+    """Update subscription status and optionally set canceled_at"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            if canceled_at:
+                cursor.execute("""
+                    UPDATE UserSubscription 
+                    SET status = %s, canceled_at = %s, updated_at = NOW()
+                    WHERE user_id = %s
+                """, (status, canceled_at, user_id))
+            else:
+                cursor.execute("""
+                    UPDATE UserSubscription 
+                    SET status = %s, updated_at = NOW()
+                    WHERE user_id = %s
+                """, (status, user_id))
+            connection.commit()
+            return True
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def update_user_subscription_cancel_at_period_end(user_id, cancel_at_period_end):
+    """Update cancel_at_period_end flag for a subscription"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE UserSubscription 
+                SET cancel_at_period_end = %s, updated_at = NOW()
+                WHERE user_id = %s
+            """, (cancel_at_period_end, user_id))
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"Error updating cancel_at_period_end: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def is_user_premium(user_id):
+    """Check if a user has an active premium subscription"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT EXISTS(
+                    SELECT 1 FROM UserSubscription us
+                    JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                    WHERE us.user_id = %s 
+                    AND us.status IN ('active', 'trialing')
+                    AND sp.name != 'free'
+                    AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+                )
+            """, (user_id,))
+            return cursor.fetchone()[0]
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def update_user_stripe_customer_id(user_id, stripe_customer_id):
+    """Update the Stripe customer ID for a user"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE Users 
+                SET stripe_customer_id = %s 
+                WHERE user_id = %s
+            """, (stripe_customer_id, user_id))
+            connection.commit()
+            return True
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def get_user_by_stripe_customer_id(stripe_customer_id):
+    """Get a user by their Stripe customer ID"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT user_id, username, email, stripe_customer_id
+                FROM Users 
+                WHERE stripe_customer_id = %s
+            """, (stripe_customer_id,))
+            return cursor.fetchone()
+    except Exception:
+        return None
+    finally:
+        connection.close()
+
+
+def record_payment(user_id, stripe_payment_intent_id, stripe_invoice_id,
+                   amount_cents, currency, status, description=None, receipt_url=None):
+    """Record a payment in payment history"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO PaymentHistory (
+                    user_id, stripe_payment_intent_id, stripe_invoice_id,
+                    amount_cents, currency, status, description, receipt_url
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_id, stripe_payment_intent_id, stripe_invoice_id,
+                  amount_cents, currency, status, description, receipt_url))
+            connection.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Error recording payment: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def get_user_payment_history(user_id, limit=20):
+    """Get a user's payment history"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT payment_id, stripe_payment_intent_id, stripe_invoice_id,
+                       amount_cents, currency, status, description, receipt_url, created_at
+                FROM PaymentHistory
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (user_id, limit))
+            return cursor.fetchall()
+    except Exception:
+        return []
+    finally:
+        connection.close()
+
+
+# ============== Free Post View Tracking ==============
+
+def get_user_free_post_views_this_month(user_id):
+    """Get count of free post views for current month"""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*) FROM FreePostView
+                WHERE user_id = %s 
+                AND viewed_at >= date_trunc('month', CURRENT_DATE)
+            """, (user_id,))
+            return cursor.fetchone()[0]
+    except Exception:
+        return 0
+    finally:
+        connection.close()
+
+
+def record_free_post_view(user_id, post_id):
+    """Record a free post view (for tracking limits)"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            # Use ON CONFLICT to avoid duplicates
+            cursor.execute("""
+                INSERT INTO FreePostView (user_id, post_id)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, post_id) DO NOTHING
+            """, (user_id, post_id))
+            connection.commit()
+            return True
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def has_user_viewed_post(user_id, post_id):
+    """Check if user has already viewed this post (for free tier)"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT EXISTS(
+                    SELECT 1 FROM FreePostView
+                    WHERE user_id = %s AND post_id = %s
+                )
+            """, (user_id, post_id))
+            return cursor.fetchone()[0]
+    except Exception:
+        return False
+    finally:
+        connection.close()
+
+
+def can_user_view_post(user_id, post_id, post_created_at, free_post_limit=5, delay_days=14):
+    """
+    Check if user can view a post based on subscription status.
+    
+    Premium users: Can view all posts
+    Free users: Can view posts older than delay_days OR within their monthly limit
+    
+    Returns: (can_view: bool, reason: str)
+    """
+    from datetime import datetime, timedelta
+    
+    # Check if user is premium
+    if is_user_premium(user_id):
+        return True, "premium"
+    
+    # Check if post is old enough for free tier
+    delay_threshold = datetime.now() - timedelta(days=delay_days)
+    if post_created_at < delay_threshold:
+        return True, "post_old_enough"
+    
+    # Check if user already viewed this post
+    if has_user_viewed_post(user_id, post_id):
+        return True, "already_viewed"
+    
+    # Check free post limit
+    views_this_month = get_user_free_post_views_this_month(user_id)
+    if views_this_month < free_post_limit:
+        return True, "within_limit"
+    
+    return False, "limit_reached"
+
+
+def get_premium_stats():
+    """Get premium subscription statistics for admin dashboard"""
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Total premium users
+            cursor.execute("""
+                SELECT COUNT(*) as total_premium
+                FROM UserSubscription us
+                JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                WHERE us.status IN ('active', 'trialing')
+                AND sp.name != 'free'
+            """)
+            total = cursor.fetchone()['total_premium']
+            
+            # Monthly vs Annual breakdown
+            cursor.execute("""
+                SELECT sp.name, COUNT(*) as count
+                FROM UserSubscription us
+                JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                WHERE us.status IN ('active', 'trialing')
+                GROUP BY sp.name
+            """)
+            by_plan = {row['name']: row['count'] for row in cursor.fetchall()}
+            
+            # Revenue this month
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount_cents), 0) as revenue
+                FROM PaymentHistory
+                WHERE status = 'succeeded'
+                AND created_at >= date_trunc('month', CURRENT_DATE)
+            """)
+            monthly_revenue = cursor.fetchone()['revenue'] / 100
+            
+            return {
+                'total_premium': total,
+                'by_plan': by_plan,
+                'monthly_revenue': monthly_revenue
+            }
+    except Exception:
+        return {}
+    finally:
+        connection.close()
+

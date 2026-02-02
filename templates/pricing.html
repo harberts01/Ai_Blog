@@ -1,0 +1,829 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing - AI Blog{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --card-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        --card-shadow-hover: 0 20px 60px rgba(102,126,234,0.25);
+    }
+    
+    .pricing-hero {
+        background: var(--primary-gradient);
+        padding: 100px 0 140px;
+        margin-top: -1.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .pricing-hero::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    
+    .pricing-hero-content {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .pricing-hero h1 {
+        font-size: 3rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+    
+    .pricing-hero .lead {
+        font-size: 1.25rem;
+        opacity: 0.9;
+    }
+    
+    /* Pricing Toggle */
+    .pricing-toggle-wrapper {
+        margin-top: -70px;
+        margin-bottom: 2rem;
+        position: relative;
+        z-index: 10;
+    }
+    
+    .pricing-toggle {
+        background: white;
+        border-radius: 50px;
+        padding: 6px;
+        display: inline-flex;
+        box-shadow: var(--card-shadow);
+        position: relative;
+    }
+    
+    .pricing-toggle .toggle-btn {
+        padding: 14px 32px;
+        border: none;
+        background: transparent;
+        font-weight: 600;
+        font-size: 1rem;
+        color: #6c757d;
+        border-radius: 50px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .pricing-toggle .toggle-btn.active {
+        color: white;
+    }
+    
+    .pricing-toggle .toggle-slider {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        height: calc(100% - 12px);
+        background: var(--primary-gradient);
+        border-radius: 50px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 0;
+    }
+    
+    .savings-pill {
+        background: var(--success-gradient);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-left: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        animation: pulse-glow 2s infinite;
+    }
+    
+    @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(56, 239, 125, 0.4); }
+        50% { box-shadow: 0 0 0 8px rgba(56, 239, 125, 0); }
+    }
+    
+    /* Pricing Cards */
+    .pricing-cards-wrapper {
+        margin-top: -20px;
+    }
+    
+    .pricing-card {
+        background: white;
+        border-radius: 24px;
+        border: 2px solid #f1f3f5;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: visible;
+        position: relative;
+    }
+    
+    .pricing-card:hover {
+        transform: translateY(-12px);
+        box-shadow: var(--card-shadow-hover);
+        border-color: transparent;
+    }
+    
+    .pricing-card.featured {
+        border: 3px solid transparent;
+        background: linear-gradient(white, white) padding-box,
+                    var(--primary-gradient) border-box;
+        transform: scale(1.02);
+    }
+    
+    .pricing-card.featured:hover {
+        transform: scale(1.02) translateY(-12px);
+    }
+    
+    .popular-badge {
+        position: absolute;
+        top: -14px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--primary-gradient);
+        color: white;
+        padding: 8px 24px;
+        border-radius: 30px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+        white-space: nowrap;
+    }
+    
+    .pricing-card-body {
+        padding: 3rem 2.5rem;
+    }
+    
+    .plan-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .plan-icon.free {
+        background: #f1f3f5;
+        color: #6c757d;
+    }
+    
+    .plan-icon.premium {
+        background: var(--primary-gradient);
+        color: white;
+    }
+    
+    .plan-name {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: #1a1a2e;
+    }
+    
+    .plan-description {
+        color: #6c757d;
+        margin-bottom: 1.5rem;
+        font-size: 0.95rem;
+    }
+    
+    .price-wrapper {
+        margin-bottom: 1.5rem;
+        min-height: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    
+    .price-main {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+    }
+    
+    .price-currency {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1a1a2e;
+        align-self: flex-start;
+        margin-top: 8px;
+    }
+    
+    .price-amount {
+        font-size: 4rem;
+        font-weight: 800;
+        line-height: 1;
+        color: #1a1a2e;
+        letter-spacing: -0.03em;
+    }
+    
+    .price-period {
+        font-size: 1rem;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    .price-note {
+        font-size: 0.85rem;
+        color: #28a745;
+        font-weight: 600;
+        margin-top: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .price-note i {
+        font-size: 0.75rem;
+    }
+    
+    .original-price {
+        text-decoration: line-through;
+        color: #adb5bd;
+        font-size: 1rem;
+        margin-left: 8px;
+    }
+    
+    .feature-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 2rem 0;
+    }
+    
+    .feature-list li {
+        display: flex;
+        align-items: flex-start;
+        padding: 12px 0;
+        border-bottom: 1px solid #f1f3f5;
+        font-size: 0.95rem;
+        color: #495057;
+    }
+    
+    .feature-list li:last-child {
+        border-bottom: none;
+    }
+    
+    .feature-icon {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+        flex-shrink: 0;
+        font-size: 0.7rem;
+    }
+    
+    .feature-icon.included {
+        background: #d4edda;
+        color: #28a745;
+    }
+    
+    .feature-icon.excluded {
+        background: #f8d7da;
+        color: #dc3545;
+    }
+    
+    .feature-text.excluded {
+        color: #adb5bd;
+    }
+    
+    .btn-subscribe {
+        padding: 16px 32px;
+        font-size: 1rem;
+        font-weight: 700;
+        border-radius: 12px;
+        width: 100%;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .btn-subscribe-primary {
+        background: var(--primary-gradient);
+        border: none;
+        color: white;
+        box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+    }
+    
+    .btn-subscribe-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(102,126,234,0.5);
+        color: white;
+    }
+    
+    .btn-subscribe-outline {
+        background: transparent;
+        border: 2px solid #dee2e6;
+        color: #495057;
+    }
+    
+    .btn-subscribe-outline:hover {
+        border-color: #667eea;
+        color: #667eea;
+        background: rgba(102,126,234,0.05);
+    }
+    
+    .btn-subscribe-success {
+        background: var(--success-gradient);
+        border: none;
+        color: white;
+    }
+    
+    /* FAQ Section */
+    .faq-section {
+        background: #f8f9fa;
+        border-radius: 24px;
+        padding: 3rem;
+        margin-top: 4rem;
+    }
+    
+    .faq-section h2 {
+        font-weight: 700;
+        margin-bottom: 2rem;
+    }
+    
+    .accordion-item {
+        background: white;
+        border: 1px solid #e9ecef !important;
+        border-radius: 12px !important;
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }
+    
+    .accordion-button {
+        font-weight: 600;
+        padding: 1.25rem 1.5rem;
+        background: white;
+    }
+    
+    .accordion-button:not(.collapsed) {
+        background: white;
+        color: #667eea;
+        box-shadow: none;
+    }
+    
+    .accordion-button:focus {
+        box-shadow: none;
+        border-color: transparent;
+    }
+    
+    .accordion-body {
+        padding: 0 1.5rem 1.25rem;
+        color: #6c757d;
+    }
+    
+    /* Trust Section */
+    .trust-section {
+        margin-top: 4rem;
+        padding-top: 3rem;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .trust-item {
+        text-align: center;
+        padding: 1rem;
+    }
+    
+    .trust-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 0.75rem;
+        font-size: 1.25rem;
+        color: #667eea;
+    }
+    
+    .trust-text {
+        font-size: 0.85rem;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    /* Guarantee Banner */
+    .guarantee-banner {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-top: 3rem;
+        text-align: center;
+    }
+    
+    .guarantee-banner i {
+        font-size: 2.5rem;
+        color: #28a745;
+        margin-bottom: 1rem;
+    }
+    
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+        .pricing-hero {
+            padding: 60px 0 100px;
+        }
+        
+        .pricing-hero h1 {
+            font-size: 2rem;
+        }
+        
+        .pricing-toggle-wrapper {
+            margin-top: -50px;
+        }
+        
+        .pricing-toggle .toggle-btn {
+            padding: 12px 20px;
+            font-size: 0.9rem;
+        }
+        
+        .savings-pill {
+            display: block;
+            margin: 4px 0 0 0;
+            font-size: 0.65rem;
+        }
+        
+        .pricing-card {
+            margin-bottom: 2rem;
+        }
+        
+        .pricing-card.featured {
+            transform: none;
+            order: -1;
+        }
+        
+        .pricing-card-body {
+            padding: 2rem 1.5rem;
+        }
+        
+        .price-amount {
+            font-size: 3rem;
+        }
+        
+        .faq-section {
+            padding: 2rem 1.5rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="pricing-hero text-white text-center">
+    <div class="container pricing-hero-content">
+        <h1 class="mb-3">Choose Your Plan</h1>
+        <p class="lead mb-0">
+            Unlock unlimited AI insights with Premium
+        </p>
+    </div>
+</section>
+
+<div class="container">
+    <!-- Pricing Toggle -->
+    <div class="pricing-toggle-wrapper text-center">
+        <div class="pricing-toggle">
+            <button type="button" class="toggle-btn active" data-plan="monthly">Monthly</button>
+            <button type="button" class="toggle-btn" data-plan="annual">
+                Annual <span class="savings-pill">Save 35%</span>
+            </button>
+            <div class="toggle-slider" id="toggleSlider"></div>
+        </div>
+    </div>
+    
+    <!-- Current Subscription Notice -->
+    {% if current_subscription and current_subscription.status in ['active', 'trialing'] %}
+    <div class="alert alert-success d-flex align-items-center mb-4 rounded-4" role="alert">
+        <i class="bi bi-check-circle-fill me-3 fs-4"></i>
+        <div>
+            <strong>You're on {{ current_subscription.display_name }}!</strong>
+            {% if current_subscription.status == 'trialing' %}
+                Trial ends {{ current_subscription.trial_end.strftime('%B %d, %Y') if current_subscription.trial_end else 'soon' }}.
+            {% else %}
+                Renews {{ current_subscription.current_period_end.strftime('%B %d, %Y') if current_subscription.current_period_end else 'automatically' }}.
+            {% endif %}
+            <a href="{{ url_for('billing') }}" class="alert-link ms-2">Manage →</a>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Pricing Cards -->
+    <div class="row justify-content-center g-4 pricing-cards-wrapper">
+        <!-- Free Tier -->
+        <div class="col-md-6 col-lg-5">
+            <div class="pricing-card h-100">
+                <div class="pricing-card-body">
+                    <div class="plan-icon free">
+                        <i class="bi bi-person"></i>
+                    </div>
+                    <h3 class="plan-name">Free</h3>
+                    <p class="plan-description">Perfect for casual readers exploring AI</p>
+                    
+                    <div class="price-wrapper">
+                        <div class="price-main">
+                            <span class="price-currency">$</span>
+                            <span class="price-amount">0</span>
+                        </div>
+                        <span class="price-period">forever free</span>
+                    </div>
+                    
+                    <ul class="feature-list">
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span>5 full articles per month</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span>Access posts after 14-day delay</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span>Basic AI tool comparisons</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon excluded"><i class="bi bi-x"></i></span>
+                            <span class="feature-text excluded">Instant access to new posts</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon excluded"><i class="bi bi-x"></i></span>
+                            <span class="feature-text excluded">Unlimited reading</span>
+                        </li>
+                    </ul>
+                    
+                    {% if not current_user %}
+                        <a href="{{ url_for('register') }}" class="btn btn-subscribe btn-subscribe-outline">
+                            Get Started Free
+                        </a>
+                    {% elif current_subscription and current_subscription.plan_name == 'free' %}
+                        <button class="btn btn-subscribe btn-secondary" disabled>
+                            <i class="bi bi-check-lg me-2"></i>Current Plan
+                        </button>
+                    {% else %}
+                        <span class="text-muted d-block text-center py-3">Included with your account</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Premium Tier -->
+        <div class="col-md-6 col-lg-5">
+            <div class="pricing-card featured h-100">
+                <span class="popular-badge">
+                    <i class="bi bi-star-fill me-1"></i> Most Popular
+                </span>
+                <div class="pricing-card-body">
+                    <div class="plan-icon premium">
+                        <i class="bi bi-lightning-charge-fill"></i>
+                    </div>
+                    <h3 class="plan-name">Premium</h3>
+                    <p class="plan-description">For AI enthusiasts & professionals</p>
+                    
+                    <div class="price-wrapper">
+                        <!-- Monthly Price -->
+                        <div class="price-display monthly-display">
+                            <div class="price-main">
+                                <span class="price-currency">$</span>
+                                <span class="price-amount">4</span>
+                                <span class="price-amount" style="font-size: 2rem;">.99</span>
+                            </div>
+                            <span class="price-period">per month</span>
+                        </div>
+                        
+                        <!-- Annual Price -->
+                        <div class="price-display annual-display d-none">
+                            <div class="price-main">
+                                <span class="price-currency">$</span>
+                                <span class="price-amount">39</span>
+                                <span class="original-price">$59.88</span>
+                            </div>
+                            <span class="price-period">per year</span>
+                            <div class="price-note">
+                                <i class="bi bi-tag-fill"></i>
+                                Only $3.25/month — Save $20.88!
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <ul class="feature-list">
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span><strong>Unlimited</strong> article access</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span><strong>Instant access</strong> to all new posts</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span>Full AI comparison features</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span>Priority email support</span>
+                        </li>
+                        <li>
+                            <span class="feature-icon included"><i class="bi bi-check"></i></span>
+                            <span>Cancel anytime, no questions</span>
+                        </li>
+                    </ul>
+                    
+                    {% if not current_user %}
+                        <a href="{{ url_for('register') }}?redirect=pricing" class="btn btn-subscribe btn-subscribe-primary">
+                            Start Premium
+                        </a>
+                    {% elif current_subscription and current_subscription.plan_name in ['premium_monthly', 'premium_annual'] %}
+                        <a href="{{ url_for('billing') }}" class="btn btn-subscribe btn-subscribe-success">
+                            <i class="bi bi-check-lg me-2"></i>Manage Subscription
+                        </a>
+                    {% else %}
+                        <a href="{{ url_for('checkout_plan', plan_type='monthly') }}" class="btn btn-subscribe btn-subscribe-primary subscribe-btn" data-plan="monthly">
+                            Subscribe Monthly
+                        </a>
+                        <a href="{{ url_for('checkout_plan', plan_type='annual') }}" class="btn btn-subscribe btn-subscribe-primary subscribe-btn d-none" data-plan="annual">
+                            Subscribe Annually — Best Value
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Guarantee Banner -->
+    <div class="guarantee-banner">
+        <i class="bi bi-shield-check"></i>
+        <h5 class="fw-bold mb-2">30-Day Money-Back Guarantee</h5>
+        <p class="text-muted mb-0">Not satisfied? Get a full refund within 30 days, no questions asked.</p>
+    </div>
+    
+    <!-- FAQ Section -->
+    <div class="faq-section">
+        <h2 class="text-center">Frequently Asked Questions</h2>
+        
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="accordion" id="pricingFAQ">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                What happens when I reach my free limit?
+                            </button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#pricingFAQ">
+                            <div class="accordion-body">
+                                After reading 5 articles in a month, you can still access posts that are 14+ days old. Your limit resets at the start of each month, or you can upgrade to Premium for unlimited access.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                Can I cancel anytime?
+                            </button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
+                            <div class="accordion-body">
+                                Absolutely! Cancel with one click anytime. You'll keep Premium access until the end of your billing period. No cancellation fees, no hassle.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                Is my payment secure?
+                            </button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
+                            <div class="accordion-body">
+                                100% secure. We use Stripe — the same payment processor trusted by Amazon, Google, and Shopify. Your card details never touch our servers.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                                Why choose annual over monthly?
+                            </button>
+                        </h2>
+                        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
+                            <div class="accordion-body">
+                                Same great features, just cheaper! Annual billing saves you 35% — that's like getting 4 months free. Plus, you lock in the current price for a full year.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Trust Section -->
+    <div class="trust-section">
+        <div class="row justify-content-center">
+            <div class="col-6 col-md-3">
+                <div class="trust-item">
+                    <div class="trust-icon">
+                        <i class="bi bi-lock-fill"></i>
+                    </div>
+                    <div class="trust-text">Secure Payment</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="trust-item">
+                    <div class="trust-icon">
+                        <i class="bi bi-shield-fill-check"></i>
+                    </div>
+                    <div class="trust-text">SSL Encrypted</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="trust-item">
+                    <div class="trust-icon">
+                        <i class="bi bi-stripe"></i>
+                    </div>
+                    <div class="trust-text">Powered by Stripe</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="trust-item">
+                    <div class="trust-icon">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </div>
+                    <div class="trust-text">Cancel Anytime</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtns = document.querySelectorAll('.toggle-btn');
+    const toggleSlider = document.getElementById('toggleSlider');
+    const monthlyDisplay = document.querySelector('.monthly-display');
+    const annualDisplay = document.querySelector('.annual-display');
+    const subscribeMonthly = document.querySelector('.subscribe-btn[data-plan="monthly"]');
+    const subscribeAnnual = document.querySelector('.subscribe-btn[data-plan="annual"]');
+    
+    // Initialize slider position
+    function initSlider() {
+        const activeBtn = document.querySelector('.toggle-btn.active');
+        if (activeBtn && toggleSlider) {
+            toggleSlider.style.width = activeBtn.offsetWidth + 'px';
+            toggleSlider.style.left = activeBtn.offsetLeft + 'px';
+        }
+    }
+    
+    // Update pricing display
+    function updatePricing(plan) {
+        if (plan === 'annual') {
+            monthlyDisplay?.classList.add('d-none');
+            annualDisplay?.classList.remove('d-none');
+            subscribeMonthly?.classList.add('d-none');
+            subscribeAnnual?.classList.remove('d-none');
+        } else {
+            monthlyDisplay?.classList.remove('d-none');
+            annualDisplay?.classList.add('d-none');
+            subscribeMonthly?.classList.remove('d-none');
+            subscribeAnnual?.classList.add('d-none');
+        }
+    }
+    
+    // Handle toggle clicks
+    toggleBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            // Update active state
+            toggleBtns.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Move slider
+            if (toggleSlider) {
+                toggleSlider.style.width = this.offsetWidth + 'px';
+                toggleSlider.style.left = this.offsetLeft + 'px';
+            }
+            
+            // Update pricing
+            updatePricing(this.dataset.plan);
+        });
+    });
+    
+    // Initialize on load
+    initSlider();
+    
+    // Reinitialize on window resize
+    window.addEventListener('resize', initSlider);
+});
+</script>
+{% endblock %}

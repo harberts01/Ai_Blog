@@ -34,6 +34,8 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/styles.css') }}"
     />
+    
+    {% block extra_css %}{% endblock %}
   </head>
   <body>
     <!-- Navigation -->
@@ -174,6 +176,13 @@
               </ul>
             </li>
             
+            <!-- Pricing Link -->
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('pricing') }}">
+                <i class="bi bi-gem me-1"></i><span class="d-lg-none d-xl-inline">Premium</span>
+              </a>
+            </li>
+            
             <li class="nav-item dropdown">
               <a
                 class="nav-link dropdown-toggle"
@@ -183,6 +192,7 @@
               >
                 <i class="bi bi-person-circle me-1"></i> {{
                 current_user.username }}
+                {% if is_premium %}<span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;">PRO</span>{% endif %}
               </a>
               <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                 {% if current_user.is_admin %}
@@ -204,6 +214,24 @@
                     <i class="bi bi-gear me-2"></i> Account Settings
                   </a>
                 </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="{{ url_for('billing') }}"
+                  >
+                    <i class="bi bi-credit-card me-2"></i> Billing
+                  </a>
+                </li>
+                {% if not is_premium %}
+                <li>
+                  <a
+                    class="dropdown-item text-warning"
+                    href="{{ url_for('pricing') }}"
+                  >
+                    <i class="bi bi-gem me-2"></i> Upgrade to Premium
+                  </a>
+                </li>
+                {% endif %}
                 <li>
                   <a
                     class="dropdown-item"
@@ -267,6 +295,25 @@
       {% endfor %}
     </div>
     {% endif %} {% endwith %}
+
+    <!-- Free Tier Banner for non-premium users -->
+    {% if current_user and not is_premium %}
+    <div class="free-tier-banner bg-gradient-warning text-dark py-2">
+      <div class="container">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="d-flex align-items-center">
+            <i class="bi bi-gem me-2"></i>
+            <span class="small">
+              <strong>{{ free_posts_remaining }}</strong> of {{ FREE_POSTS_PER_MONTH }} free articles remaining this month
+            </span>
+          </div>
+          <a href="{{ url_for('pricing') }}" class="btn btn-dark btn-sm">
+            <i class="bi bi-arrow-up-circle me-1"></i>Upgrade to Premium
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Main Content -->
     <main>{% block content %}{% endblock %}</main>
@@ -569,5 +616,7 @@
       }
     </script>
     {% endif %}
+    
+    {% block extra_js %}{% endblock %}
   </body>
 </html>

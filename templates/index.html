@@ -135,6 +135,16 @@
               >
                 {{ post.title }}
               </a>
+              {% set days_old = (now - post.created_at).days if post.created_at else 999 %}
+              {% if days_old < FREE_POST_DELAY_DAYS %}
+              <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem; vertical-align: middle;">
+                {% if is_premium or not current_user %}
+                <i class="bi bi-gem"></i>
+                {% else %}
+                <i class="bi bi-lock-fill"></i>
+                {% endif %}
+              </span>
+              {% endif %}
             </h5>
 
             <p class="card-text text-muted small">
