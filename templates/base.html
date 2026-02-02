@@ -205,6 +205,16 @@
                   </a>
                 </li>
                 <li><hr class="dropdown-divider" /></li>
+                {% elif not is_premium %}
+                <li>
+                  <a
+                    class="dropdown-item text-warning"
+                    href="{{ url_for('pricing') }}"
+                  >
+                    <i class="bi bi-gem me-2"></i> Upgrade to Premium
+                  </a>
+                </li>
+                <li><hr class="dropdown-divider" /></li>
                 {% endif %}
                 <li>
                   <a
@@ -222,16 +232,6 @@
                     <i class="bi bi-credit-card me-2"></i> Billing
                   </a>
                 </li>
-                {% if not is_premium %}
-                <li>
-                  <a
-                    class="dropdown-item text-warning"
-                    href="{{ url_for('pricing') }}"
-                  >
-                    <i class="bi bi-gem me-2"></i> Upgrade to Premium
-                  </a>
-                </li>
-                {% endif %}
                 <li>
                   <a
                     class="dropdown-item"
