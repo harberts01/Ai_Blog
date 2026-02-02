@@ -111,9 +111,16 @@ class Config:
     # SendGrid specific
     SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
     
-    # Mailgun specific
+    # Mailgun specific (for premium email notifications)
+    # Get these from: https://app.mailgun.com/app/sending/domains
     MAILGUN_API_KEY = os.environ.get('MAILGUN_API_KEY', '')
-    MAILGUN_DOMAIN = os.environ.get('MAILGUN_DOMAIN', '')
+    MAILGUN_DOMAIN = os.environ.get('MAILGUN_DOMAIN', '')  # e.g., mg.yourdomain.com
+    # Use 'https://api.eu.mailgun.net/v3' for EU region
+    MAILGUN_API_BASE = os.environ.get('MAILGUN_API_BASE', 'https://api.mailgun.net/v3')
+    # Set to 'true' to use Mailgun HTTP API instead of SMTP (recommended)
+    MAILGUN_USE_API = os.environ.get('MAILGUN_USE_API', 'true').lower() == 'true'
+    # Enable email tracking (opens, clicks)
+    MAILGUN_TRACKING = os.environ.get('MAILGUN_TRACKING', 'true').lower() == 'true'
     
     # AWS SES specific
     AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')

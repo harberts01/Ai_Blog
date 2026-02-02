@@ -2059,6 +2059,88 @@ def get_subscriber_user_ids_by_tool(tool_id):
         connection.close()
 
 
+def get_premium_subscriber_emails_by_tool(tool_id):
+    """
+    Get email addresses of premium users subscribed to a tool (for email notifications)
+    
+    Only returns emails of users who:
+    - Have an active/trialing premium subscription
+    - Are subscribed to the specified AI tool
+    - Have email_notifications enabled
+    - Have an active account
+    
+    Args:
+        tool_id: The AI tool's ID
+        
+    Returns:
+        List of email addresses
+    """
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT u.email
+                FROM Users u
+                JOIN Subscription s ON u.user_id = s.user_id
+                JOIN UserSubscription us ON u.user_id = us.user_id
+                JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                WHERE s.tool_id = %s 
+                AND u.is_active = TRUE
+                AND u.email_notifications = TRUE
+                AND us.status IN ('active', 'trialing')
+                AND sp.name != 'free'
+                AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+            """, (tool_id,))
+            return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting premium subscriber emails: {e}")
+        return []
+    finally:
+        connection.close()
+
+
+def get_premium_subscriber_user_ids_by_tool(tool_id):
+    """
+    Get user IDs of premium users subscribed to a tool (for in-app notifications)
+    
+    Only returns user IDs of users who:
+    - Have an active/trialing premium subscription
+    - Are subscribed to the specified AI tool
+    - Have an active account
+    
+    Args:
+        tool_id: The AI tool's ID
+        
+    Returns:
+        List of user IDs
+    """
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT u.user_id
+                FROM Users u
+                JOIN Subscription s ON u.user_id = s.user_id
+                JOIN UserSubscription us ON u.user_id = us.user_id
+                JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                WHERE s.tool_id = %s 
+                AND u.is_active = TRUE
+                AND us.status IN ('active', 'trialing')
+                AND sp.name != 'free'
+                AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+            """, (tool_id,))
+            return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting premium subscriber user IDs: {e}")
+        return []
+    finally:
+        connection.close()
+
+
 # ============== Premium Subscription Functions ==============
 
 def get_all_subscription_plans():

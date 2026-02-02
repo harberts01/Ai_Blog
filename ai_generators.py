@@ -653,17 +653,20 @@ def _send_post_notifications(app, post_data, tool):
         except Exception as e:
             print(f"⚠️ Failed to create in-app notifications: {e}")
     
-    # Send email notifications (if enabled)
+    # Send email notifications to PREMIUM subscribers only (via Mailgun API)
     if Config.MAIL_ENABLED:
         try:
-            from email_utils import send_new_post_notification
+            from email_utils import send_premium_post_notification
             
-            subscribers = db.get_subscriber_emails_by_tool(tool['id'])
-            if subscribers:
-                send_new_post_notification(app, post_data, tool['name'], subscribers)
-                print(f"📧 Email notifications queued for {len(subscribers)} subscribers")
+            # Get premium subscribers only (users with active premium subscription + tool subscription)
+            premium_subscribers = db.get_premium_subscriber_emails_by_tool(tool['id'])
+            if premium_subscribers:
+                send_premium_post_notification(app, post_data, tool['name'], premium_subscribers)
+                print(f"📧 Premium email notifications queued for {len(premium_subscribers)} subscribers (Mailgun API)")
+            else:
+                print(f"📧 No premium subscribers with email notifications enabled for {tool['name']}")
         except Exception as e:
-            print(f"⚠️ Failed to send email notifications: {e}")
+            print(f"⚠️ Failed to send premium email notifications: {e}")
 
 
 def generate_all_posts(app=None):
