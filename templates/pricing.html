@@ -14,7 +14,6 @@
     .pricing-hero {
         background: var(--primary-gradient);
         padding: 100px 0 140px;
-        margin-top: -1.5rem;
         position: relative;
         overflow: hidden;
     }
@@ -51,6 +50,8 @@
         margin-bottom: 2rem;
         position: relative;
         z-index: 10;
+        display: flex;
+        justify-content: center;
     }
     
     .pricing-toggle {
@@ -58,6 +59,7 @@
         border-radius: 50px;
         padding: 6px;
         display: inline-flex;
+        align-items: center;
         box-shadow: var(--card-shadow);
         position: relative;
     }
@@ -490,7 +492,7 @@
 
 <div class="container">
     <!-- Pricing Toggle -->
-    <div class="pricing-toggle-wrapper text-center">
+    <div class="pricing-toggle-wrapper">
         <div class="pricing-toggle">
             <button type="button" class="toggle-btn active" data-plan="monthly">Monthly</button>
             <button type="button" class="toggle-btn" data-plan="annual">
