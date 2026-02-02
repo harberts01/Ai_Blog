@@ -279,7 +279,7 @@
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %} {% if
     messages %}
-    <div class="container mt-3">
+    <div class="container mt-3" id="flash-container">
       {% for category, message in messages %}
       <div
         class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
@@ -421,11 +421,21 @@
     <script>
       (function() {
         const alerts = document.querySelectorAll('.alert-dismissible');
+        const container = document.getElementById('flash-container');
+        
         alerts.forEach(function(alert) {
+          // Remove container when alert is closed
+          alert.addEventListener('closed.bs.alert', function() {
+            if (container && container.querySelectorAll('.alert').length === 0) {
+              container.remove();
+            }
+          });
+          
+          // Auto-dismiss after 5 seconds
           setTimeout(function() {
             const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
             bsAlert.close();
-          }, 5000); // 5 seconds
+          }, 5000);
         });
       })();
     </script>
