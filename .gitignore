@@ -68,6 +68,7 @@ log/
 *.db
 *.sqlite3
 *.sql.bak
+migrations/
 
 # Node (if any frontend tools)
 node_modules/
