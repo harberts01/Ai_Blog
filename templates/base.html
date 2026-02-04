@@ -39,7 +39,7 @@
   </head>
   <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+    <nav class="navbar navbar-expand-xl navbar-dark bg-dark sticky-top">
       <div class="container">
         <a
           class="navbar-brand d-flex align-items-center"
@@ -59,6 +59,17 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarNav">
+          <!-- Mobile Dark Mode Toggle Pill -->
+          <div class="d-xl-none mobile-theme-toggle-container">
+            <div class="mobile-theme-toggle">
+              <span class="theme-label"><i class="bi bi-sun-fill"></i> Light</span>
+              <button class="theme-pill" id="themeToggleMobile" title="Toggle dark mode" aria-label="Toggle dark mode">
+                <span class="theme-pill-slider"></span>
+              </button>
+              <span class="theme-label"><i class="bi bi-moon-fill"></i> Dark</span>
+            </div>
+          </div>
+
           <ul class="navbar-nav me-auto">
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('home') }}">
@@ -102,7 +113,7 @@
           </ul>
 
           <!-- Search Form - Desktop -->
-          <form action="{{ url_for('search') }}" method="GET" class="d-none d-lg-flex me-3">
+          <form action="{{ url_for('search') }}" method="GET" class="d-none d-xl-flex me-3">
             <div class="input-group input-group-sm">
               <input 
                 type="text" 
@@ -110,7 +121,7 @@
                 class="form-control" 
                 placeholder="Search posts..." 
                 aria-label="Search"
-                style="min-width: 180px;"
+                style="min-width: 150px;"
               >
               <button class="btn btn-outline-light" type="submit">
                 <i class="bi bi-search"></i>
@@ -118,13 +129,13 @@
             </div>
           </form>
 
-          <!-- Dark Mode Toggle -->
-          <button class="theme-toggle me-2" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+          <!-- Dark Mode Toggle - Desktop Only -->
+          <button class="theme-toggle me-2 d-none d-xl-flex" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
             <i class="bi bi-moon-fill" id="themeIcon"></i>
           </button>
           
           <!-- Search Form - Mobile (inside collapse menu) -->
-          <form action="{{ url_for('search') }}" method="GET" class="d-lg-none mt-3 mb-2 w-100 order-last">
+          <form action="{{ url_for('search') }}" method="GET" class="d-xl-none mt-3 mb-2 w-100 order-last">
             <div class="input-group">
               <input 
                 type="text" 
@@ -447,6 +458,7 @@
     <script>
       (function() {
         const themeToggle = document.getElementById('themeToggle');
+        const themeToggleMobile = document.getElementById('themeToggleMobile');
         const themeIcon = document.getElementById('themeIcon');
         const html = document.documentElement;
         
@@ -460,16 +472,22 @@
             themeIcon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
           }
         }
+
+        function toggleTheme() {
+          const currentTheme = html.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          
+          html.setAttribute('data-theme', newTheme);
+          localStorage.setItem('theme', newTheme);
+          updateIcon(newTheme);
+        }
         
         if (themeToggle) {
-          themeToggle.addEventListener('click', function() {
-            const currentTheme = html.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            
-            html.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateIcon(newTheme);
-          });
+          themeToggle.addEventListener('click', toggleTheme);
+        }
+
+        if (themeToggleMobile) {
+          themeToggleMobile.addEventListener('click', toggleTheme);
         }
       })();
     </script>
