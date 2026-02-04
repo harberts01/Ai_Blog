@@ -1149,9 +1149,9 @@ def cron_cleanup():
     
     logger.info("Cron: Running cleanup tasks...")
     
-    # Cleanup spam comments older than 30 days
-    spam_deleted = db.delete_old_spam_comments(days=30)
-    logger.info(f"Cron: Deleted {spam_deleted} old spam comments")
+    # Cleanup spam comments older than configured days
+    spam_deleted = db.delete_old_spam_comments(days=Config.SPAM_MAX_AGE_DAYS)
+    logger.info(f"Cron: Deleted {spam_deleted} old spam comments (>{Config.SPAM_MAX_AGE_DAYS} days old)")
     
     # Cleanup old notifications
     notif_deleted = db.delete_old_notifications(Config.NOTIFICATIONS_MAX_AGE_DAYS)
