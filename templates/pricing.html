@@ -13,7 +13,7 @@
     
     .pricing-hero {
         background: var(--primary-gradient);
-        padding: 100px 0 140px;
+        padding: 100px 0 80px;
         position: relative;
         overflow: hidden;
     }
@@ -46,8 +46,8 @@
     
     /* Pricing Toggle */
     .pricing-toggle-wrapper {
-        margin-top: -70px;
-        margin-bottom: 2rem;
+        margin-top: 2rem;
+        margin-bottom: 0;
         position: relative;
         z-index: 10;
         display: flex;
@@ -113,7 +113,7 @@
     
     /* Pricing Cards */
     .pricing-cards-wrapper {
-        margin-top: -20px;
+        margin-top: 3rem;
     }
     
     .pricing-card {
@@ -487,20 +487,21 @@
         <p class="lead mb-0">
             Unlock unlimited AI insights with Premium
         </p>
+        
+        <!-- Pricing Toggle -->
+        <div class="pricing-toggle-wrapper">
+            <div class="pricing-toggle">
+                <button type="button" class="toggle-btn active" data-plan="monthly">Monthly</button>
+                <button type="button" class="toggle-btn" data-plan="annual">
+                    Annual <span class="savings-pill">Save 35%</span>
+                </button>
+                <div class="toggle-slider" id="toggleSlider"></div>
+            </div>
+        </div>
     </div>
 </section>
 
 <div class="container">
-    <!-- Pricing Toggle -->
-    <div class="pricing-toggle-wrapper">
-        <div class="pricing-toggle">
-            <button type="button" class="toggle-btn active" data-plan="monthly">Monthly</button>
-            <button type="button" class="toggle-btn" data-plan="annual">
-                Annual <span class="savings-pill">Save 35%</span>
-            </button>
-            <div class="toggle-slider" id="toggleSlider"></div>
-        </div>
-    </div>
     
     <!-- Current Subscription Notice -->
     {% if current_subscription and current_subscription.status in ['active', 'trialing'] %}
