@@ -945,7 +945,32 @@ def admin_dashboard():
     """Admin dashboard with statistics and overview"""
     stats = db.get_admin_statistics()
     api_usage = db.get_api_usage_stats(days=30)
-    return render_template("admin/dashboard.html", stats=stats, api_usage=api_usage)
+    cron_stats = db.get_cron_stats()
+    recent_cron_logs = db.get_cron_logs(limit=10)
+    return render_template("admin/dashboard.html", 
+                          stats=stats, 
+                          api_usage=api_usage,
+                          cron_stats=cron_stats,
+                          recent_cron_logs=recent_cron_logs)
+
+
+@app.route("/admin/cron-logs")
+@admin_required
+def admin_cron_logs():
+    """Admin page to view cron job execution logs"""
+    job_type = request.args.get('type')
+    limit = request.args.get('limit', 50, type=int)
+    
+    logs = db.get_cron_logs(limit=limit, job_type=job_type)
+    cron_stats = db.get_cron_stats()
+    
+    return render_template(
+        "admin/cron_logs.html",
+        logs=logs,
+        cron_stats=cron_stats,
+        job_type=job_type,
+        limit=limit
+    )
 
 
 @app.route("/admin/api-errors")
@@ -1132,10 +1157,24 @@ def cron_generate_posts():
         logger.warning("Unauthorized cron attempt")
         abort(403)
     
-    logger.info("Cron: Starting post generation...")
-    ai_generators.generate_all_posts(app=app)
-    logger.info("Cron: Post generation complete")
-    return jsonify({'success': True, 'message': 'Post generation complete'})
+    # Log cron job start
+    log_id = db.log_cron_start('generate_posts')
+    
+    try:
+        logger.info("Cron: Starting post generation...")
+        posts_count = ai_generators.generate_all_posts(app=app)
+        logger.info("Cron: Post generation complete")
+        
+        # Log successful completion
+        db.log_cron_complete(log_id, posts_generated=posts_count if posts_count else 0)
+        
+        return jsonify({'success': True, 'message': 'Post generation complete', 'posts_generated': posts_count})
+    except Exception as e:
+        # Log failure
+        error_msg = str(e)
+        logger.error(f"Cron job failed: {error_msg}")
+        db.log_cron_failure(log_id, error_msg)
+        return jsonify({'success': False, 'error': error_msg}), 500
 
 
 @app.route("/cron/cleanup")
@@ -1147,21 +1186,39 @@ def cron_cleanup():
         logger.warning("Unauthorized cron attempt")
         abort(403)
     
-    logger.info("Cron: Running cleanup tasks...")
+    # Log cron job start
+    log_id = db.log_cron_start('cleanup')
     
-    # Cleanup spam comments older than configured days
-    spam_deleted = db.delete_old_spam_comments(days=Config.SPAM_MAX_AGE_DAYS)
-    logger.info(f"Cron: Deleted {spam_deleted} old spam comments (>{Config.SPAM_MAX_AGE_DAYS} days old)")
-    
-    # Cleanup old notifications
-    notif_deleted = db.delete_old_notifications(Config.NOTIFICATIONS_MAX_AGE_DAYS)
-    logger.info(f"Cron: Deleted {notif_deleted} old notifications")
-    
-    return jsonify({
-        'success': True,
-        'spam_deleted': spam_deleted,
-        'notifications_deleted': notif_deleted
-    })
+    try:
+        logger.info("Cron: Running cleanup tasks...")
+        
+        # Cleanup spam comments older than configured days
+        spam_deleted = db.delete_old_spam_comments(days=Config.SPAM_MAX_AGE_DAYS)
+        logger.info(f"Cron: Deleted {spam_deleted} old spam comments (>{Config.SPAM_MAX_AGE_DAYS} days old)")
+        
+        # Cleanup old notifications
+        notif_deleted = db.delete_old_notifications(Config.NOTIFICATIONS_MAX_AGE_DAYS)
+        logger.info(f"Cron: Deleted {notif_deleted} old notifications")
+        
+        # Log successful completion
+        db.log_cron_complete(
+            log_id, 
+            spam_deleted=spam_deleted, 
+            notifications_deleted=notif_deleted,
+            details={'spam_max_age_days': Config.SPAM_MAX_AGE_DAYS, 'notif_max_age_days': Config.NOTIFICATIONS_MAX_AGE_DAYS}
+        )
+        
+        return jsonify({
+            'success': True,
+            'spam_deleted': spam_deleted,
+            'notifications_deleted': notif_deleted
+        })
+    except Exception as e:
+        # Log failure
+        error_msg = str(e)
+        logger.error(f"Cron cleanup failed: {error_msg}")
+        db.log_cron_failure(log_id, error_msg)
+        return jsonify({'success': False, 'error': error_msg}), 500
 
 
 # ============== Error Handlers ==============

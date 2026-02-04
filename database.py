@@ -5,6 +5,7 @@ Handles all database connections and operations
 import os
 import logging
 import psycopg2
+import psycopg2.extras
 from psycopg2.extras import RealDictCursor
 from config import Config
 
@@ -2674,6 +2675,159 @@ def get_premium_stats():
                 'monthly_revenue': monthly_revenue
             }
     except Exception:
+        return {}
+    finally:
+        connection.close()
+
+
+# ============== Cron Job Logging ==============
+
+def log_cron_start(job_type):
+    """Log the start of a cron job and return the log ID"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO cron_logs (job_type, status, started_at)
+                VALUES (%s, 'started', CURRENT_TIMESTAMP)
+                RETURNING log_id
+            """, (job_type,))
+            log_id = cursor.fetchone()[0]
+            connection.commit()
+            return log_id
+    except Exception as e:
+        logger.error(f"Failed to log cron start: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def log_cron_complete(log_id, posts_generated=0, spam_deleted=0, notifications_deleted=0, details=None):
+    """Log the completion of a cron job"""
+    connection = get_connection()
+    if not connection or not log_id:
+        return
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE cron_logs
+                SET status = 'completed',
+                    completed_at = CURRENT_TIMESTAMP,
+                    duration_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at))::INTEGER,
+                    posts_generated = %s,
+                    spam_deleted = %s,
+                    notifications_deleted = %s,
+                    details = %s
+                WHERE log_id = %s
+            """, (posts_generated, spam_deleted, notifications_deleted, 
+                  psycopg2.extras.Json(details) if details else None, log_id))
+            connection.commit()
+    except Exception as e:
+        logger.error(f"Failed to log cron completion: {e}")
+    finally:
+        connection.close()
+
+
+def log_cron_failure(log_id, error_message):
+    """Log the failure of a cron job"""
+    connection = get_connection()
+    if not connection or not log_id:
+        return
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE cron_logs
+                SET status = 'failed',
+                    completed_at = CURRENT_TIMESTAMP,
+                    duration_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at))::INTEGER,
+                    error_message = %s
+                WHERE log_id = %s
+            """, (error_message, log_id))
+            connection.commit()
+    except Exception as e:
+        logger.error(f"Failed to log cron failure: {e}")
+    finally:
+        connection.close()
+
+
+def get_cron_logs(limit=50, job_type=None):
+    """Get recent cron job execution logs"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            if job_type:
+                cursor.execute("""
+                    SELECT log_id, job_type, status, started_at, completed_at,
+                           duration_seconds, posts_generated, spam_deleted,
+                           notifications_deleted, error_message, details
+                    FROM cron_logs
+                    WHERE job_type = %s
+                    ORDER BY started_at DESC
+                    LIMIT %s
+                """, (job_type, limit))
+            else:
+                cursor.execute("""
+                    SELECT log_id, job_type, status, started_at, completed_at,
+                           duration_seconds, posts_generated, spam_deleted,
+                           notifications_deleted, error_message, details
+                    FROM cron_logs
+                    ORDER BY started_at DESC
+                    LIMIT %s
+                """, (limit,))
+            return cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Failed to get cron logs: {e}")
+        return []
+    finally:
+        connection.close()
+
+
+def get_cron_stats():
+    """Get statistics about cron job executions"""
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        stats = {}
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Last successful execution per job type
+            cursor.execute("""
+                SELECT DISTINCT ON (job_type) 
+                    job_type, started_at, completed_at, duration_seconds,
+                    posts_generated, spam_deleted, notifications_deleted
+                FROM cron_logs
+                WHERE status = 'completed'
+                ORDER BY job_type, started_at DESC
+            """)
+            last_runs = cursor.fetchall()
+            stats['last_successful_runs'] = {row['job_type']: row for row in last_runs}
+            
+            # Count executions in last 7 days
+            cursor.execute("""
+                SELECT job_type, status, COUNT(*) as count
+                FROM cron_logs
+                WHERE started_at >= CURRENT_DATE - INTERVAL '7 days'
+                GROUP BY job_type, status
+                ORDER BY job_type, status
+            """)
+            recent_counts = cursor.fetchall()
+            stats['recent_executions'] = recent_counts
+            
+            # Total executions
+            cursor.execute("SELECT COUNT(*) as total FROM cron_logs")
+            stats['total_executions'] = cursor.fetchone()['total']
+            
+            # Failed executions count
+            cursor.execute("SELECT COUNT(*) as failed FROM cron_logs WHERE status = 'failed'")
+            stats['failed_count'] = cursor.fetchone()['failed']
+            
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get cron stats: {e}")
         return {}
     finally:
         connection.close()

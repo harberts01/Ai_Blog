@@ -21,6 +21,12 @@
           <span class="badge bg-danger">{{ stats.spam_comments }}</span>
           {% endif %}
         </a>
+        <a href="{{ url_for('admin_cron_logs') }}" class="btn btn-outline-info">
+          <i class="bi bi-clock-history me-1"></i>Cron Jobs
+          {% if cron_stats.failed_count > 0 %}
+          <span class="badge bg-danger">{{ cron_stats.failed_count }}</span>
+          {% endif %}
+        </a>
         <a href="{{ url_for('admin_api_errors') }}" class="btn btn-outline-danger">
           <i class="bi bi-exclamation-triangle me-1"></i>API Errors
           {% if api_usage.totals.failed_requests > 0 %}
@@ -228,6 +234,125 @@
               <span>Total Output</span>
               <span>{{ "{:,}".format(api_usage.totals.total_output_tokens|int) }}</span></span>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cron Jobs Monitoring Section -->
+    <div class="row g-4 mb-4">
+      <div class="col-12">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Automated Jobs Status</h5>
+            <a href="{{ url_for('admin_cron_logs') }}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-list-ul me-1"></i>View All Logs
+            </a>
+          </div>
+          <div class="card-body">
+            {% if cron_stats.last_successful_runs %}
+            <div class="row g-3 mb-4">
+              {% for job_type, run in cron_stats.last_successful_runs.items() %}
+              <div class="col-md-6">
+                <div class="border rounded p-3">
+                  <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 class="mb-1">
+                        {% if job_type == 'generate_posts' %}
+                        <i class="bi bi-file-earmark-plus text-primary me-2"></i>Post Generation
+                        {% elif job_type == 'cleanup' %}
+                        <i class="bi bi-trash text-warning me-2"></i>Database Cleanup
+                        {% else %}
+                        <i class="bi bi-gear text-secondary me-2"></i>{{ job_type }}
+                        {% endif %}
+                      </h6>
+                      <small class="text-muted">Last run: {{ run.completed_at.strftime('%Y-%m-%d %H:%M:%S') if run.completed_at else 'N/A' }}</small>
+                    </div>
+                    <span class="badge bg-success">Success</span>
+                  </div>
+                  <div class="row g-2 text-center mt-3">
+                    <div class="col">
+                      <div class="text-muted small">Duration</div>
+                      <div class="fw-semibold">{{ run.duration_seconds }}s</div>
+                    </div>
+                    {% if run.posts_generated > 0 %}
+                    <div class="col">
+                      <div class="text-muted small">Posts</div>
+                      <div class="fw-semibold">{{ run.posts_generated }}</div>
+                    </div>
+                    {% endif %}
+                    {% if run.spam_deleted > 0 %}
+                    <div class="col">
+                      <div class="text-muted small">Spam</div>
+                      <div class="fw-semibold">{{ run.spam_deleted }}</div>
+                    </div>
+                    {% endif %}
+                    {% if run.notifications_deleted > 0 %}
+                    <div class="col">
+                      <div class="text-muted small">Notifications</div>
+                      <div class="fw-semibold">{{ run.notifications_deleted }}</div>
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info mb-0">
+              <i class="bi bi-info-circle me-2"></i>No automated job executions recorded yet. Jobs will appear here once they run.
+            </div>
+            {% endif %}
+
+            {% if recent_cron_logs %}
+            <div class="table-responsive">
+              <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Job Type</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Duration</th>
+                    <th>Results</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for log in recent_cron_logs[:5] %}
+                  <tr>
+                    <td>
+                      {% if log.job_type == 'generate_posts' %}
+                      <i class="bi bi-file-earmark-plus text-primary me-1"></i>Generate Posts
+                      {% elif log.job_type == 'cleanup' %}
+                      <i class="bi bi-trash text-warning me-1"></i>Cleanup
+                      {% else %}
+                      {{ log.job_type }}
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if log.status == 'completed' %}
+                      <span class="badge bg-success">Completed</span>
+                      {% elif log.status == 'failed' %}
+                      <span class="badge bg-danger">Failed</span>
+                      {% else %}
+                      <span class="badge bg-warning">{{ log.status }}</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-muted small">{{ log.started_at.strftime('%m/%d %H:%M') if log.started_at else '-' }}</td>
+                    <td class="text-muted small">{{ log.completed_at.strftime('%m/%d %H:%M') if log.completed_at else '-' }}</td>
+                    <td>{{ log.duration_seconds }}s</td>
+                    <td class="text-muted small">
+                      {% if log.posts_generated > 0 %}{{ log.posts_generated }} posts{% endif %}
+                      {% if log.spam_deleted > 0 %}{{ log.spam_deleted }} spam{% endif %}
+                      {% if log.notifications_deleted > 0 %}{{ log.notifications_deleted }} notif{% endif %}
+                      {% if log.error_message %}<span class="text-danger" title="{{ log.error_message }}">Error</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
