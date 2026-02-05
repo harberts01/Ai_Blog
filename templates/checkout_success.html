@@ -93,6 +93,13 @@
             Your subscription is now active. Thank you for supporting AI Blog!
         </p>
         
+        {% if not is_premium %}
+        <div class="alert alert-info mb-4">
+            <i class="bi bi-info-circle me-2"></i>
+            Your premium status is being activated. <a href="{{ url_for('checkout_success') }}{% if session_id %}?session_id={{ session_id }}{% endif %}" class="alert-link">Refresh</a> if the banner doesn't update.
+        </div>
+        {% endif %}
+        
         <div class="mb-4">
             <h6 class="fw-bold mb-3">You've unlocked:</h6>
             
@@ -151,5 +158,28 @@ function createConfetti() {
 }
 
 document.addEventListener('DOMContentLoaded', createConfetti);
+
+// Auto-refresh if premium status not yet reflected (handles webhook delay)
+{% if not is_premium and session_id %}
+let refreshAttempts = 0;
+const maxRefreshAttempts = 3;
+
+function checkPremiumStatus() {
+    if (refreshAttempts < maxRefreshAttempts) {
+        refreshAttempts++;
+        // Check if banner still shows (premium not activated yet)
+        const freeBanner = document.querySelector('.free-tier-banner');
+        if (freeBanner) {
+            console.log('Premium not yet activated, refreshing... (attempt ' + refreshAttempts + ')');
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        }
+    }
+}
+
+// Check after 3 seconds
+setTimeout(checkPremiumStatus, 3000);
+{% endif %}
 </script>
 {% endblock %}

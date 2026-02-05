@@ -681,14 +681,15 @@ def checkout_plan(plan_type):
 @app.route("/checkout/success")
 @login_required
 def checkout_success():
-    """Handle successful checkout - also provisions subscription for local dev"""
+    """Handle successful checkout - provisions subscription from Stripe session"""
     import stripe_utils
     
     session_id = request.args.get('session_id')
     user = get_current_user()
+    subscription_activated = False
     
-    # Try to provision the subscription from the checkout session
-    # This is needed for local development where webhooks don't work
+    # Always try to provision the subscription from the checkout session
+    # This ensures subscription is activated even if webhook is delayed/fails
     if session_id:
         try:
             checkout_session = stripe_utils.stripe.checkout.Session.retrieve(
@@ -696,21 +697,33 @@ def checkout_success():
                 expand=['subscription', 'customer']
             )
             
-            if checkout_session.payment_status == 'paid':
+            logger.info(f"Checkout session retrieved for user {user['id']}: payment_status={checkout_session.payment_status}, subscription={checkout_session.subscription}")
+            
+            # Check for paid OR successful subscription (handles both regular payments and trials)
+            if checkout_session.payment_status in ['paid', 'no_payment_required'] and checkout_session.subscription:
                 stripe_sub = checkout_session.subscription
                 stripe_customer_id = checkout_session.customer.id if hasattr(checkout_session.customer, 'id') else checkout_session.customer
                 
                 # Update user's stripe customer ID
                 db.update_user_stripe_customer_id(user['id'], stripe_customer_id)
                 
-                # Check if subscription already exists
-                existing_sub = db.get_user_subscription(user['id'])
+                # Get the subscription details if it's just an ID string
+                if isinstance(stripe_sub, str):
+                    stripe_sub = stripe_utils.stripe.Subscription.retrieve(stripe_sub)
                 
-                if not existing_sub or existing_sub.get('status') != 'active':
-                    # Get the subscription details
-                    if isinstance(stripe_sub, str):
-                        stripe_sub = stripe_utils.stripe.Subscription.retrieve(stripe_sub)
-                    
+                # Check existing subscription - only skip if already active with SAME stripe subscription
+                existing_sub = db.get_user_subscription(user['id'])
+                should_update = True
+                
+                if existing_sub:
+                    # Update if: no stripe sub ID, different stripe sub ID, not active, or is free plan
+                    if (existing_sub.get('stripe_subscription_id') == stripe_sub.id 
+                        and existing_sub.get('status') == 'active'
+                        and existing_sub.get('plan_name') not in ['free', None]):
+                        should_update = False
+                        logger.info(f"User {user['id']} already has active premium subscription {stripe_sub.id}")
+                
+                if should_update:
                     # Determine plan based on interval
                     plan_name = 'premium_monthly'
                     if stripe_sub.items.data[0].price.recurring.interval == 'year':
@@ -719,20 +732,31 @@ def checkout_success():
                     plan = db.get_subscription_plan_by_name(plan_name)
                     if plan:
                         from datetime import datetime
-                        db.upsert_user_subscription(
+                        success = db.upsert_user_subscription(
                             user_id=user['id'],
                             plan_id=plan['plan_id'],
                             stripe_subscription_id=stripe_sub.id,
                             stripe_customer_id=stripe_customer_id,
-                            status='active',
+                            status=stripe_sub.status,  # Use actual Stripe status
                             current_period_start=datetime.fromtimestamp(stripe_sub.current_period_start),
                             current_period_end=datetime.fromtimestamp(stripe_sub.current_period_end)
                         )
-                        logger.info(f"Provisioned subscription for user {user['id']} from checkout session")
+                        if success:
+                            subscription_activated = True
+                            logger.info(f"✅ Subscription provisioned for user {user['id']}: {plan_name} (status: {stripe_sub.status})")
+                        else:
+                            logger.error(f"Failed to upsert subscription for user {user['id']}")
+                    else:
+                        logger.error(f"Plan not found: {plan_name}")
+                else:
+                    subscription_activated = True  # Already active
+            else:
+                logger.warning(f"Checkout session for user {user['id']} not ready: payment_status={checkout_session.payment_status}")
+                
         except Exception as e:
-            logger.error(f"Error provisioning subscription from checkout: {e}")
+            logger.error(f"Error provisioning subscription from checkout for user {user['id']}: {e}", exc_info=True)
     
-    return render_template("checkout_success.html", session_id=session_id)
+    return render_template("checkout_success.html", session_id=session_id, subscription_activated=subscription_activated)
 
 
 @app.route("/checkout/cancel")
