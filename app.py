@@ -1232,8 +1232,10 @@ def admin_sync_subscription(user_id):
         )
 
         logger.info(f"Retrieved subscription type: {type(active_sub)}")
+        logger.info(f"Subscription keys: {list(active_sub.keys())}")
+        logger.info(f"Full subscription: {active_sub}")
 
-        # Now access the subscription data (should work with full object)
+        # Access ALL data using bracket notation (consistent approach)
         interval = active_sub['items']['data'][0]['price']['recurring']['interval']
         plan_name = 'premium_annual' if interval == 'year' else 'premium_monthly'
 
@@ -1242,15 +1244,15 @@ def admin_sync_subscription(user_id):
         if not plan:
             return jsonify({'success': False, 'error': f'Plan {plan_name} not found in database'}), 404
 
-        # Update subscription (same as fix_subscription.py)
+        # Update subscription - use bracket notation consistently
         success = db.upsert_user_subscription(
             user_id=user_id,
             plan_id=plan['plan_id'],
-            stripe_subscription_id=active_sub.id,
+            stripe_subscription_id=active_sub['id'],
             stripe_customer_id=stripe_customer_id,
-            status=active_sub.status,
-            current_period_start=datetime.fromtimestamp(active_sub.current_period_start),
-            current_period_end=datetime.fromtimestamp(active_sub.current_period_end)
+            status=active_sub['status'],
+            current_period_start=datetime.fromtimestamp(active_sub['current_period_start']),
+            current_period_end=datetime.fromtimestamp(active_sub['current_period_end'])
         )
 
         if success:
