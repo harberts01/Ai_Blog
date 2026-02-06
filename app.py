@@ -1088,17 +1088,21 @@ def admin_view_user(user_id):
     if not user:
         flash('User not found.', 'error')
         return redirect(url_for('admin_users'))
-    
+
     comments = db.get_comments_by_user(user_id, limit=50)
     subscriptions = db.get_user_subscriptions(user_id)
     bookmarks = db.get_user_bookmarks(user_id)
-    
+    premium_subscription = db.get_user_subscription(user_id)  # Get premium subscription status
+    is_premium = db.is_user_premium(user_id)
+
     return render_template(
         "admin/user_detail.html",
         user=user,
         comments=comments,
         subscriptions=subscriptions,
-        bookmarks=bookmarks
+        bookmarks=bookmarks,
+        premium_subscription=premium_subscription,
+        is_premium=is_premium
     )
 
 

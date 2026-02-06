@@ -67,6 +67,46 @@
             {% endif %}
           </div>
         </div>
+
+        <!-- Premium Subscription Card -->
+        <div class="card border-0 shadow-sm mt-4">
+          <div class="card-body p-4">
+            <h5 class="mb-3"><i class="bi bi-credit-card me-2"></i>Premium Subscription</h5>
+
+            {% if premium_subscription %}
+            <div class="text-start mb-3">
+              <p class="mb-2">
+                <strong>Plan:</strong>
+                <span class="badge bg-{% if is_premium %}success{% else %}secondary{% endif %}">
+                  {{ premium_subscription.plan_name|replace('_', ' ')|title }}
+                </span>
+              </p>
+              <p class="mb-2">
+                <strong>Status:</strong>
+                <span class="badge bg-{% if premium_subscription.status == 'active' %}success{% elif premium_subscription.status == 'trialing' %}info{% else %}warning{% endif %}">
+                  {{ premium_subscription.status|title }}
+                </span>
+              </p>
+              {% if premium_subscription.current_period_end %}
+              <p class="mb-2"><strong>Period End:</strong> {{ premium_subscription.current_period_end.strftime('%B %d, %Y') }}</p>
+              {% endif %}
+              {% if premium_subscription.stripe_subscription_id %}
+              <p class="mb-2 text-muted" style="font-size: 0.85em;">
+                <strong>Stripe Sub ID:</strong> {{ premium_subscription.stripe_subscription_id }}
+              </p>
+              {% endif %}
+            </div>
+            {% else %}
+            <p class="text-muted mb-3">No premium subscription</p>
+            {% endif %}
+
+            <button type="button" class="btn btn-primary w-100" onclick="syncSubscription({{ user.id }})">
+              <i class="bi bi-arrow-repeat me-1"></i>
+              Sync from Stripe
+            </button>
+            <div id="sync-result-{{ user.id }}" class="mt-2"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Comments Section -->
@@ -123,4 +163,49 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function syncSubscription(userId) {
+  const button = event.target.closest('button');
+  const resultDiv = document.getElementById('sync-result-' + userId);
+
+  // Disable button and show loading
+  button.disabled = true;
+  button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing...';
+  resultDiv.innerHTML = '';
+
+  // Call the API
+  fetch('/admin/sync-subscription/' + userId, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': '{{ csrf_token() }}'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      resultDiv.innerHTML = '<div class="alert alert-success alert-sm mb-0">' +
+        '<i class="bi bi-check-circle me-1"></i>' + data.message +
+        '<br><small>Plan: ' + data.plan + ' | Status: ' + data.status + '</small></div>';
+      // Reload page after 2 seconds to show updated subscription info
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      resultDiv.innerHTML = '<div class="alert alert-danger alert-sm mb-0">' +
+        '<i class="bi bi-exclamation-circle me-1"></i>' + data.error + '</div>';
+    }
+  })
+  .catch(error => {
+    resultDiv.innerHTML = '<div class="alert alert-danger alert-sm mb-0">' +
+      '<i class="bi bi-exclamation-circle me-1"></i>Error: ' + error.message + '</div>';
+  })
+  .finally(() => {
+    // Re-enable button
+    button.disabled = false;
+    button.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync from Stripe';
+  });
+}
+</script>
 {% endblock %}
