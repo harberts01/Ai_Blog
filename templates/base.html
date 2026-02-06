@@ -60,81 +60,84 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarNav">
-          <!-- Mobile Menu Header with Close Button -->
+          <!-- Mobile Menu Header - Close Button Only -->
           <div class="d-xl-none mobile-menu-header">
-            <div class="container d-flex justify-content-between align-items-center">
-              <span class="navbar-brand mb-0">
-                <i class="bi bi-robot me-2"></i>
-                <span class="fw-bold">AI Blog Daily</span>
-              </span>
+            <div class="container">
               <button
-                class="btn btn-link text-white p-2"
+                class="btn btn-link"
                 type="button"
                 data-bs-toggle="collapse"
                 data-bs-target="#navbarNav"
                 aria-label="Close menu"
               >
-                <i class="bi bi-x-lg fs-4"></i>
+                <i class="bi bi-x-lg"></i>
               </button>
             </div>
           </div>
 
-          <!-- Mobile Dark Mode Toggle Pill -->
-          <div class="d-xl-none mobile-theme-toggle-container">
-            <div class="mobile-theme-toggle">
-              <span class="theme-label"><i class="bi bi-sun-fill"></i> Light</span>
-              <button class="theme-pill" id="themeToggleMobile" title="Toggle dark mode" aria-label="Toggle dark mode">
-                <span class="theme-pill-slider"></span>
-              </button>
-              <span class="theme-label"><i class="bi bi-moon-fill"></i> Dark</span>
+          <!-- Mobile Menu Content Wrapper -->
+          <div class="d-xl-none mobile-menu-content">
+            <!-- Mobile Dark Mode Toggle Pill -->
+            <div class="mobile-theme-toggle-container">
+              <div class="mobile-theme-toggle">
+                <span class="theme-label"><i class="bi bi-sun-fill"></i> Light</span>
+                <button class="theme-pill" id="themeToggleMobile" title="Toggle dark mode" aria-label="Toggle dark mode">
+                  <span class="theme-pill-slider"></span>
+                </button>
+                <span class="theme-label"><i class="bi bi-moon-fill"></i> Dark</span>
+              </div>
             </div>
-          </div>
 
-          <ul class="navbar-nav me-auto">
-            <!-- Mobile Section Header -->
-            <li class="d-xl-none mobile-nav-section-header">
-              <small class="text-uppercase text-muted fw-bold px-1">Navigation</small>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link mobile-nav-link" href="{{ url_for('home') }}">
-                <i class="bi bi-house-door me-1"></i> Home
-              </a>
-            </li>
-            <li class="nav-item dropdown">
-              <a
-                class="nav-link dropdown-toggle"
-                href="#"
-                role="button"
-                data-bs-toggle="dropdown"
-              >
-                <i class="bi bi-cpu me-1"></i> AI Tools
-              </a>
-              <ul class="dropdown-menu dropdown-menu-dark">
-                {% for tool in ai_tools %}
-                <li>
-                  <a
-                    class="dropdown-item"
-                    href="{{ url_for('tool_page', slug=tool.slug) }}"
-                  >
-                    {{ tool.name }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link mobile-nav-link" href="{{ url_for('compare_page') }}">
-                <i class="bi bi-arrow-left-right me-1"></i> Compare
-              </a>
-            </li>
-            {% if current_user %}
-            <li class="nav-item">
-              <a class="nav-link mobile-nav-link" href="{{ url_for('my_feed') }}">
-                <i class="bi bi-rss me-1"></i> My Feed
-              </a>
-            </li>
-            {% endif %}
-          </ul>
+            <ul class="navbar-nav me-auto">
+              <!-- Mobile Section Header -->
+              <li class="d-xl-none mobile-nav-section-header">
+                <small class="text-uppercase text-muted fw-bold px-1">Navigation</small>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link mobile-nav-link" href="{{ url_for('home') }}">
+                  <i class="bi bi-house-door"></i> Home
+                </a>
+              </li>
+              <li class="nav-item dropdown d-xl-block">
+                <a
+                  class="nav-link dropdown-toggle d-none d-xl-flex"
+                  href="#"
+                  role="button"
+                  data-bs-toggle="dropdown"
+                >
+                  <i class="bi bi-cpu me-1"></i> AI Tools
+                </a>
+                <!-- Desktop dropdown -->
+                <ul class="dropdown-menu dropdown-menu-dark d-none d-xl-block">
+                  {% for tool in ai_tools %}
+                  <li>
+                    <a
+                      class="dropdown-item"
+                      href="{{ url_for('tool_page', slug=tool.slug) }}"
+                    >
+                      {{ tool.name }}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                <!-- Mobile: Button to open submenu -->
+                <a class="nav-link d-xl-none" href="#" id="aiToolsMenuBtn">
+                  <i class="bi bi-cpu"></i> AI Tools
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link mobile-nav-link" href="{{ url_for('compare_page') }}">
+                  <i class="bi bi-arrow-left-right"></i> Compare
+                </a>
+              </li>
+              {% if current_user %}
+              <li class="nav-item">
+                <a class="nav-link mobile-nav-link" href="{{ url_for('my_feed') }}">
+                  <i class="bi bi-rss"></i> My Feed
+                </a>
+              </li>
+              {% endif %}
+            </ul>
 
           <!-- Search Form - Desktop -->
           <form action="{{ url_for('search') }}" method="GET" class="d-none d-xl-flex me-3">
@@ -174,12 +177,12 @@
             </div>
           </form>
 
-          <ul class="navbar-nav">
-            {% if current_user %}
-            <!-- Mobile Section Header for Account -->
-            <li class="d-xl-none mobile-nav-section-header mt-auto">
-              <small class="text-uppercase text-muted fw-bold px-1">Account</small>
-            </li>
+            <ul class="navbar-nav">
+              {% if current_user %}
+              <!-- Mobile Section Header for Account -->
+              <li class="d-xl-none mobile-nav-section-header mt-auto">
+                <small class="text-uppercase text-muted fw-bold px-1">Account</small>
+              </li>
             <!-- Notifications Dropdown -->
             <li class="nav-item dropdown me-2">
               <a
@@ -298,22 +301,47 @@
                 </li>
               </ul>
             </li>
-            {% else %}
-            <li class="nav-item">
-              <a class="nav-link" href="{{ url_for('login') }}">
-                <i class="bi bi-box-arrow-in-right me-1"></i> Login
-              </a>
-            </li>
-            <li class="nav-item">
-              <a
-                class="btn btn-primary btn-sm ms-2"
-                href="{{ url_for('register') }}"
-              >
-                Sign Up
-              </a>
-            </li>
-            {% endif %}
-          </ul>
+              {% else %}
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('login') }}">
+                  <i class="bi bi-box-arrow-in-right me-1"></i> Login
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="btn btn-primary btn-sm ms-2"
+                  href="{{ url_for('register') }}"
+                >
+                  Sign Up
+                </a>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+          <!-- End Mobile Menu Content Wrapper -->
+
+          <!-- AI Tools Submenu (Mobile Only) -->
+          <div class="d-xl-none mobile-submenu" id="aiToolsSubmenu">
+            <div class="mobile-submenu-header">
+              <button class="mobile-submenu-back" id="aiToolsBackBtn">
+                <i class="bi bi-chevron-left"></i>
+                <span>Back</span>
+              </button>
+            </div>
+            <div class="mobile-submenu-content">
+              <h2 class="mobile-submenu-title">AI Tools</h2>
+              <ul class="mobile-submenu-list">
+                {% for tool in ai_tools %}
+                <li class="mobile-submenu-item">
+                  <a class="mobile-submenu-link" href="{{ url_for('tool_page', slug=tool.slug) }}">
+                    {{ tool.name }}
+                  </a>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+
         </div>
       </div>
     </nav>
@@ -486,6 +514,9 @@
     <script>
       (function() {
         const navbarCollapse = document.getElementById('navbarNav');
+        const aiToolsSubmenu = document.getElementById('aiToolsSubmenu');
+        const aiToolsMenuBtn = document.getElementById('aiToolsMenuBtn');
+        const aiToolsBackBtn = document.getElementById('aiToolsBackBtn');
 
         if (navbarCollapse) {
           // Prevent body scroll when menu is open
@@ -495,6 +526,10 @@
 
           navbarCollapse.addEventListener('hidden.bs.collapse', function () {
             document.body.style.overflow = '';
+            // Close submenu if open
+            if (aiToolsSubmenu && aiToolsSubmenu.classList.contains('show')) {
+              aiToolsSubmenu.classList.remove('show');
+            }
           });
 
           // Close menu when clicking on navigation links (not dropdowns)
@@ -507,6 +542,33 @@
               bsCollapse.hide();
             });
           });
+
+          // AI Tools submenu navigation
+          if (aiToolsMenuBtn && aiToolsSubmenu && aiToolsBackBtn) {
+            // Open submenu
+            aiToolsMenuBtn.addEventListener('click', function(e) {
+              e.preventDefault();
+              aiToolsSubmenu.classList.add('show');
+            });
+
+            // Close submenu (back button)
+            aiToolsBackBtn.addEventListener('click', function() {
+              aiToolsSubmenu.classList.remove('show');
+            });
+
+            // Close main menu when clicking submenu links
+            const submenuLinks = aiToolsSubmenu.querySelectorAll('.mobile-submenu-link');
+            submenuLinks.forEach(link => {
+              link.addEventListener('click', function() {
+                // Close submenu
+                aiToolsSubmenu.classList.remove('show');
+                // Close main menu
+                setTimeout(() => {
+                  bsCollapse.hide();
+                }, 300);
+              });
+            });
+          }
         }
       })();
     </script>
