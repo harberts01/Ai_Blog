@@ -1241,10 +1241,20 @@ def admin_sync_subscription(user_id):
 
         # Get period fields with fallback to billing_cycle_anchor or start_date
         period_start = active_sub.get('current_period_start') or active_sub.get('billing_cycle_anchor') or active_sub.get('start_date')
-        period_end = active_sub.get('current_period_end') or active_sub.get('billing_cycle_anchor') or active_sub.get('start_date')
+        period_end = active_sub.get('current_period_end')
 
-        if not period_start or not period_end:
-            return jsonify({'success': False, 'error': f'Missing period dates in subscription. Available fields: {list(active_sub.keys())}'}), 500
+        if not period_start:
+            return jsonify({'success': False, 'error': f'Missing period start in subscription. Available fields: {list(active_sub.keys())}'}), 500
+
+        # If period_end doesn't exist, calculate it based on interval
+        if not period_end:
+            if interval == 'year':
+                # Add 365 days worth of seconds
+                period_end = period_start + (365 * 24 * 60 * 60)
+            else:  # month
+                # Add 30 days worth of seconds (approximation)
+                period_end = period_start + (30 * 24 * 60 * 60)
+            logger.info(f"Calculated period_end from interval {interval}: {datetime.fromtimestamp(period_end)}")
 
         # Update subscription
         success = db.upsert_user_subscription(
@@ -1258,14 +1268,21 @@ def admin_sync_subscription(user_id):
         )
 
         if success:
+            # Verify subscription was created correctly
+            sub_check = db.get_user_subscription(user_id)
             is_premium = db.is_user_premium(user_id)
+
             logger.info(f"✅ Admin synced subscription for user {user_id}: {plan_name} (status: {active_sub.status})")
+            logger.info(f"Verification - Subscription in DB: plan={sub_check.get('plan_name') if sub_check else 'None'}, status={sub_check.get('status') if sub_check else 'None'}, is_premium={is_premium}")
+
             return jsonify({
                 'success': True,
                 'message': f'Subscription synced successfully',
                 'plan': plan_name,
                 'status': active_sub.status,
-                'is_premium': is_premium
+                'is_premium': is_premium,
+                'db_plan': sub_check.get('plan_name') if sub_check else None,
+                'period_end': sub_check.get('current_period_end').isoformat() if sub_check and sub_check.get('current_period_end') else None
             })
         else:
             return jsonify({'success': False, 'error': 'Failed to update subscription in database'}), 500
@@ -1273,6 +1290,49 @@ def admin_sync_subscription(user_id):
     except Exception as e:
         logger.error(f"Error syncing subscription for user {user_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/admin/check-subscription/<int:user_id>")
+@admin_required
+def admin_check_subscription(user_id):
+    """Diagnostic endpoint to check subscription status"""
+    try:
+        user = db.get_user_by_id(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Get subscription from database
+        subscription = db.get_user_subscription(user_id)
+        is_premium = db.is_user_premium(user_id)
+
+        # Get all plans for reference
+        connection = db.get_connection()
+        all_plans = []
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT plan_id, name, display_name FROM SubscriptionPlan")
+                    all_plans = [{'plan_id': row[0], 'name': row[1], 'display_name': row[2]} for row in cursor.fetchall()]
+            finally:
+                connection.close()
+
+        return jsonify({
+            'user_id': user_id,
+            'username': user['username'],
+            'email': user['email'],
+            'is_premium': is_premium,
+            'subscription': {
+                'plan_id': subscription.get('plan_id') if subscription else None,
+                'plan_name': subscription.get('plan_name') if subscription else None,
+                'status': subscription.get('status') if subscription else None,
+                'current_period_end': subscription.get('current_period_end').isoformat() if subscription and subscription.get('current_period_end') else None,
+                'stripe_subscription_id': subscription.get('stripe_subscription_id') if subscription else None,
+            } if subscription else None,
+            'available_plans': all_plans
+        })
+    except Exception as e:
+        logger.error(f"Error checking subscription for user {user_id}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 # ============== Cron Endpoints (for external scheduler like Dokploy) ==============
