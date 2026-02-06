@@ -100,11 +100,11 @@
             <p class="text-muted mb-3">No premium subscription</p>
             {% endif %}
 
-            <button type="button" class="btn btn-primary w-100" onclick="syncSubscription({{ user.id }})">
+            <button type="button" class="btn btn-primary w-100" id="syncBtn" data-user-id="{{ user.id }}">
               <i class="bi bi-arrow-repeat me-1"></i>
               Sync from Stripe
             </button>
-            <div id="sync-result-{{ user.id }}" class="mt-2"></div>
+            <div id="sync-result" class="mt-2"></div>
           </div>
         </div>
       </div>
@@ -165,47 +165,52 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
+{% block extra_js %}
 <script>
-function syncSubscription(userId) {
-  const button = event.target.closest('button');
-  const resultDiv = document.getElementById('sync-result-' + userId);
+document.addEventListener('DOMContentLoaded', function() {
+  const syncBtn = document.getElementById('syncBtn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', function() {
+      const userId = this.getAttribute('data-user-id');
+      const resultDiv = document.getElementById('sync-result');
 
-  // Disable button and show loading
-  button.disabled = true;
-  button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing...';
-  resultDiv.innerHTML = '';
+      // Disable button and show loading
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing...';
+      resultDiv.innerHTML = '';
 
-  // Call the API
-  fetch('/admin/sync-subscription/' + userId, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': '{{ csrf_token() }}'
-    }
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
-      resultDiv.innerHTML = '<div class="alert alert-success alert-sm mb-0">' +
-        '<i class="bi bi-check-circle me-1"></i>' + data.message +
-        '<br><small>Plan: ' + data.plan + ' | Status: ' + data.status + '</small></div>';
-      // Reload page after 2 seconds to show updated subscription info
-      setTimeout(() => location.reload(), 2000);
-    } else {
-      resultDiv.innerHTML = '<div class="alert alert-danger alert-sm mb-0">' +
-        '<i class="bi bi-exclamation-circle me-1"></i>' + data.error + '</div>';
-    }
-  })
-  .catch(error => {
-    resultDiv.innerHTML = '<div class="alert alert-danger alert-sm mb-0">' +
-      '<i class="bi bi-exclamation-circle me-1"></i>Error: ' + error.message + '</div>';
-  })
-  .finally(() => {
-    // Re-enable button
-    button.disabled = false;
-    button.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync from Stripe';
-  });
-}
+      // Call the API
+      fetch('/admin/sync-subscription/' + userId, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token() }}'
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          resultDiv.innerHTML = '<div class="alert alert-success alert-sm mb-0">' +
+            '<i class="bi bi-check-circle me-1"></i>' + data.message +
+            '<br><small>Plan: ' + data.plan + ' | Status: ' + data.status + '</small></div>';
+          // Reload page after 2 seconds to show updated subscription info
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          resultDiv.innerHTML = '<div class="alert alert-danger alert-sm mb-0">' +
+            '<i class="bi bi-exclamation-circle me-1"></i>' + data.error + '</div>';
+        }
+      })
+      .catch(error => {
+        resultDiv.innerHTML = '<div class="alert alert-danger alert-sm mb-0">' +
+          '<i class="bi bi-exclamation-circle me-1"></i>Error: ' + error.message + '</div>';
+      })
+      .finally(() => {
+        // Re-enable button
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync from Stripe';
+      });
+    });
+  }
+});
 </script>
 {% endblock %}
