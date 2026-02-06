@@ -1224,19 +1224,14 @@ def admin_sync_subscription(user_id):
         if not active_sub_id:
             return jsonify({'success': False, 'error': 'No active subscription found in Stripe'}), 404
 
-        # Retrieve the full subscription object with all nested data expanded
+        # Retrieve the full subscription object WITHOUT expand (to get all standard fields)
         logger.info(f"Retrieving full subscription object: {active_sub_id}")
-        active_sub = stripe.Subscription.retrieve(
-            active_sub_id,
-            expand=['items.data.price']
-        )
+        active_sub = stripe.Subscription.retrieve(active_sub_id)
 
-        logger.info(f"Retrieved subscription type: {type(active_sub)}")
-        logger.info(f"Subscription keys: {list(active_sub.keys())}")
-        logger.info(f"Full subscription: {active_sub}")
+        logger.info(f"Retrieved subscription - has current_period_start: {active_sub.get('current_period_start', 'MISSING')}")
 
-        # Access ALL data using bracket notation (consistent approach)
-        interval = active_sub['items']['data'][0]['price']['recurring']['interval']
+        # Access interval from plan (since subscription object has 'plan' field)
+        interval = active_sub.get('plan', {}).get('interval', 'month')
         plan_name = 'premium_annual' if interval == 'year' else 'premium_monthly'
 
         # Get plan from database
@@ -1244,15 +1239,22 @@ def admin_sync_subscription(user_id):
         if not plan:
             return jsonify({'success': False, 'error': f'Plan {plan_name} not found in database'}), 404
 
-        # Update subscription - use bracket notation consistently
+        # Get period fields with fallback to billing_cycle_anchor or start_date
+        period_start = active_sub.get('current_period_start') or active_sub.get('billing_cycle_anchor') or active_sub.get('start_date')
+        period_end = active_sub.get('current_period_end') or active_sub.get('billing_cycle_anchor') or active_sub.get('start_date')
+
+        if not period_start or not period_end:
+            return jsonify({'success': False, 'error': f'Missing period dates in subscription. Available fields: {list(active_sub.keys())}'}), 500
+
+        # Update subscription
         success = db.upsert_user_subscription(
             user_id=user_id,
             plan_id=plan['plan_id'],
             stripe_subscription_id=active_sub['id'],
             stripe_customer_id=stripe_customer_id,
             status=active_sub['status'],
-            current_period_start=datetime.fromtimestamp(active_sub['current_period_start']),
-            current_period_end=datetime.fromtimestamp(active_sub['current_period_end'])
+            current_period_start=datetime.fromtimestamp(period_start),
+            current_period_end=datetime.fromtimestamp(period_end)
         )
 
         if success:
