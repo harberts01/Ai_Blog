@@ -1,9 +1,18 @@
+# Core Flask and Web Server
 flask
+flask-wtf
+flask-limiter
+gunicorn
+werkzeug
+
+# Database
 psycopg2-binary
+
+# Utilities
 python-dotenv
 requests
-schedule
-werkzeug
+
+# Payments
 stripe>=8.0.0
 
 # AI Provider SDKs
@@ -11,4 +20,3 @@ openai>=1.0.0
 anthropic>=0.18.0
 google-generativeai>=0.4.0
 together>=1.0.0
-mistralai>=1.0.0
