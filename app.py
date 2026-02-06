@@ -1178,8 +1178,12 @@ def admin_generate_single_post(tool_slug):
 @admin_required
 def admin_sync_subscription(user_id):
     """Manually sync a user's subscription from Stripe to database"""
-    import stripe_utils
+    import stripe
     from datetime import datetime
+    from config import Config
+
+    # Initialize Stripe
+    stripe.api_key = Config.STRIPE_SECRET_KEY
 
     try:
         user = db.get_user_by_id(user_id)
@@ -1190,7 +1194,7 @@ def admin_sync_subscription(user_id):
         stripe_customer_id = user.get('stripe_customer_id')
         if not stripe_customer_id:
             # Try to find by email
-            customers = stripe_utils.stripe.Customer.list(email=user['email'], limit=1)
+            customers = stripe.Customer.list(email=user['email'], limit=1)
             if customers.data:
                 stripe_customer_id = customers.data[0].id
                 db.update_user_stripe_customer_id(user_id, stripe_customer_id)
@@ -1198,7 +1202,7 @@ def admin_sync_subscription(user_id):
                 return jsonify({'success': False, 'error': 'No Stripe customer found for this user'}), 404
 
         # Get active subscriptions from Stripe
-        subscriptions = stripe_utils.stripe.Subscription.list(
+        subscriptions = stripe.Subscription.list(
             customer=stripe_customer_id,
             status='all',
             limit=10
