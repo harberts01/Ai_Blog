@@ -31,7 +31,7 @@
                 </div>
               </div>
 
-              <div class="mb-4">
+              <div class="mb-3">
                 <label for="password" class="form-label">Password</label>
                 <div class="input-group">
                   <span class="input-group-text"
@@ -46,6 +46,12 @@
                     required
                   />
                 </div>
+              </div>
+
+              <div class="mb-4 text-end">
+                <a href="{{ url_for('forgot_password') }}" class="text-muted text-decoration-none small">
+                  <i class="bi bi-question-circle me-1"></i>Forgot Password?
+                </a>
               </div>
 
               <button type="submit" class="btn btn-primary w-100 py-2">

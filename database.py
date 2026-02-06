@@ -2832,3 +2832,91 @@ def get_cron_stats():
     finally:
         connection.close()
 
+
+# ============== Password Reset Functions ==============
+
+def create_password_reset_token(user_id, token, expires_at):
+    """Create a password reset token"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO password_reset_tokens (user_id, token, expires_at)
+                VALUES (%s, %s, %s)
+            """, (user_id, token, expires_at))
+            connection.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Failed to create password reset token: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def verify_password_reset_token(token):
+    """Verify password reset token and return user_id if valid"""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT user_id, expires_at
+                FROM password_reset_tokens
+                WHERE token = %s
+            """, (token,))
+            result = cursor.fetchone()
+
+            if result:
+                user_id, expires_at = result
+                # Check if token is expired
+                from datetime import datetime
+                if datetime.now() < expires_at:
+                    return user_id
+            return None
+    except Exception as e:
+        logger.error(f"Failed to verify password reset token: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def delete_password_reset_token(token):
+    """Delete a password reset token after use"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM password_reset_tokens WHERE token = %s", (token,))
+            connection.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Failed to delete password reset token: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def update_user_password(user_id, password_hash):
+    """Update user's password"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE Users
+                SET password_hash = %s
+                WHERE user_id = %s
+            """, (password_hash, user_id))
+            connection.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Failed to update user password: {e}")
+        return False
+    finally:
+        connection.close()
+

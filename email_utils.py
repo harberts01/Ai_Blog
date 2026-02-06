@@ -578,7 +578,7 @@ def send_premium_post_notification(app, post, tool_name, subscribers):
 def send_welcome_email(app, email, username):
     """Send welcome email to new users"""
     subject = f"Welcome to {Config.SITE_NAME}!"
-    
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -617,28 +617,133 @@ def send_welcome_email(app, email, username):
     </body>
     </html>
     """
-    
+
     text_content = f"""
     Welcome to {Config.SITE_NAME}, {username}!
-    
+
     Thanks for joining our community. Here's what you can do:
     - Read AI-generated blog posts from ChatGPT, Claude, Gemini, and more
     - Subscribe to your favorite AI tools to get notified of new posts
     - Bookmark posts to read later
     - Join the conversation in the comments
-    
+
     Visit us: {Config.SITE_URL}
     """
-    
+
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
     msg['From'] = Config.MAIL_DEFAULT_SENDER
-    
+
     msg.attach(MIMEText(text_content, 'plain'))
     msg.attach(MIMEText(html_content, 'html'))
-    
+
     thread = Thread(target=send_email_async, args=(app, msg, [email]))
     thread.start()
+
+
+def send_password_reset_email(app, email, username, reset_url):
+    """
+    Send password reset email to user
+
+    Args:
+        app: Flask app instance (for app context in async)
+        email: User's email address
+        username: User's username
+        reset_url: Password reset URL with token
+    """
+    subject = f"Reset Your {Config.SITE_NAME} Password"
+
+    # Check if Mailgun API is configured
+    use_mailgun_api = (
+        Config.MAILGUN_API_KEY and
+        Config.MAILGUN_DOMAIN and
+        getattr(Config, 'MAILGUN_USE_API', True)
+    )
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .header h1 {{ margin: 0; font-size: 24px; }}
+            .content {{ background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .btn {{ display: inline-block; background: #667eea; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #999; font-size: 12px; }}
+            .warning {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 15px 0; }}
+            .code {{ background: #e9ecef; padding: 2px 6px; border-radius: 3px; font-family: monospace; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🔐 Password Reset Request</h1>
+            </div>
+            <div class="content">
+                <h2>Hi {username}!</h2>
+                <p>We received a request to reset your password for your {Config.SITE_NAME} account.</p>
+                <p>Click the button below to reset your password:</p>
+                <p style="text-align: center;">
+                    <a href="{reset_url}" class="btn">Reset Password</a>
+                </p>
+                <p>Or copy and paste this link into your browser:</p>
+                <p class="code" style="word-break: break-all;">{reset_url}</p>
+                <div class="warning">
+                    <strong>⚠️ Security Notice:</strong>
+                    <ul style="margin: 5px 0;">
+                        <li>This link will expire in <strong>1 hour</strong></li>
+                        <li>If you didn't request this reset, you can safely ignore this email</li>
+                        <li>Your password won't change until you click the link and set a new one</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer">
+                <p>This is an automated security email from {Config.SITE_NAME}</p>
+                <p>If you need help, contact us at {Config.MAIL_DEFAULT_SENDER}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+    Password Reset Request
+
+    Hi {username},
+
+    We received a request to reset your password for your {Config.SITE_NAME} account.
+
+    Click this link to reset your password:
+    {reset_url}
+
+    ⚠️ SECURITY NOTICE:
+    - This link will expire in 1 hour
+    - If you didn't request this reset, you can safely ignore this email
+    - Your password won't change until you click the link and set a new one
+
+    ---
+    This is an automated security email from {Config.SITE_NAME}
+    If you need help, contact us at {Config.MAIL_DEFAULT_SENDER}
+    """
+
+    if use_mailgun_api:
+        # Use Mailgun HTTP API (recommended for reliability)
+        send_email_via_mailgun_api_async(app, [email], subject, html_content, text_content)
+        logger.info("Queued password reset email via Mailgun API for: %s", email)
+    else:
+        # Fallback to SMTP
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = Config.MAIL_DEFAULT_SENDER
+
+        msg.attach(MIMEText(text_content, 'plain'))
+        msg.attach(MIMEText(html_content, 'html'))
+
+        thread = Thread(target=send_email_async, args=(app, msg, [email]))
+        thread.start()
+        logger.info("Queued password reset email via SMTP for: %s", email)
 
 
 def _get_excerpt(content, max_length=200):

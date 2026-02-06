@@ -393,6 +393,79 @@ def logout():
     return redirect(url_for('home'))
 
 
+@app.route("/forgot-password", methods=["GET", "POST"])
+@limiter.limit("5 per hour")
+def forgot_password():
+    """Request password reset"""
+    if get_current_user():
+        return redirect(url_for('home'))
+
+    if request.method == "POST":
+        email = sanitize_input(request.form.get('email'))
+        user = db.get_user_by_email(email)
+
+        if user:
+            # Generate reset token (valid for 1 hour)
+            import secrets
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now() + datetime.timedelta(hours=1)
+
+            # Store token in database
+            db.create_password_reset_token(user['id'], token, expires_at)
+
+            # Send email with reset link
+            reset_url = url_for('reset_password', token=token, _external=True)
+            import email_utils
+            email_utils.send_password_reset_email(user['email'], user['username'], reset_url)
+
+            logger.info(f"Password reset requested for user_id: {user['id']}")
+
+        # Always show success message (don't reveal if email exists)
+        flash('If an account exists with that email, you will receive a password reset link shortly.', 'info')
+        return redirect(url_for('login'))
+
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+@limiter.limit("5 per hour")
+def reset_password(token):
+    """Reset password with token"""
+    if get_current_user():
+        return redirect(url_for('home'))
+
+    # Verify token
+    user_id = db.verify_password_reset_token(token)
+    if not user_id:
+        flash('Invalid or expired reset link.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == "POST":
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if not password or len(password) < 8:
+            flash('Password must be at least 8 characters.', 'error')
+            return render_template("reset_password.html")
+
+        if password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template("reset_password.html")
+
+        # Update password
+        password_hash = generate_password_hash(password)
+        db.update_user_password(user_id, password_hash)
+
+        # Delete used token
+        db.delete_password_reset_token(token)
+
+        logger.info(f"Password reset successful for user_id: {user_id}")
+        flash('Your password has been reset! You can now log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template("reset_password.html")
+
+
 # ============== Subscription Routes ==============
 
 @app.route("/subscribe/<int:tool_id>", methods=["POST"])
