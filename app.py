@@ -1170,6 +1170,84 @@ def admin_generate_single_post(tool_slug):
     return redirect(url_for('admin_dashboard'))
 
 
+@app.route("/admin/sync-subscription/<int:user_id>", methods=["POST"])
+@admin_required
+def admin_sync_subscription(user_id):
+    """Manually sync a user's subscription from Stripe to database"""
+    import stripe_utils
+    from datetime import datetime
+
+    try:
+        user = db.get_user_by_id(user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        # Get Stripe customer ID
+        stripe_customer_id = user.get('stripe_customer_id')
+        if not stripe_customer_id:
+            # Try to find by email
+            customers = stripe_utils.stripe.Customer.list(email=user['email'], limit=1)
+            if customers.data:
+                stripe_customer_id = customers.data[0].id
+                db.update_user_stripe_customer_id(user_id, stripe_customer_id)
+            else:
+                return jsonify({'success': False, 'error': 'No Stripe customer found for this user'}), 404
+
+        # Get active subscriptions from Stripe
+        subscriptions = stripe_utils.stripe.Subscription.list(
+            customer=stripe_customer_id,
+            status='all',
+            limit=10
+        )
+
+        # Find active subscription
+        active_sub = None
+        for sub in subscriptions.data:
+            if sub.status in ['active', 'trialing']:
+                active_sub = sub
+                break
+
+        if not active_sub:
+            return jsonify({'success': False, 'error': 'No active subscription found in Stripe'}), 404
+
+        # Determine plan based on interval
+        interval = active_sub.items.data[0].price.recurring.interval
+        plan_name = 'premium_annual' if interval == 'year' else 'premium_monthly'
+
+        # Get plan from database
+        plan = db.get_subscription_plan_by_name(plan_name)
+        if not plan:
+            return jsonify({'success': False, 'error': f'Plan {plan_name} not found in database'}), 404
+
+        # Update subscription
+        success = db.upsert_user_subscription(
+            user_id=user_id,
+            plan_id=plan['plan_id'],
+            stripe_subscription_id=active_sub.id,
+            stripe_customer_id=stripe_customer_id,
+            status=active_sub.status,
+            current_period_start=datetime.fromtimestamp(active_sub.current_period_start),
+            current_period_end=datetime.fromtimestamp(active_sub.current_period_end)
+        )
+
+        if success:
+            is_premium = db.is_user_premium(user_id)
+            logger.info(f"✅ Admin synced subscription for user {user_id}: {plan_name} (status: {active_sub.status})")
+            return jsonify({
+                'success': True,
+                'message': f'Subscription synced successfully',
+                'plan': plan_name,
+                'status': active_sub.status,
+                'is_premium': is_premium
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update subscription in database'}), 500
+
+    except Exception as e:
+        logger.error(f"Error syncing subscription for user {user_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============== Cron Endpoints (for external scheduler like Dokploy) ==============
 
 @app.route("/cron/generate-posts")
