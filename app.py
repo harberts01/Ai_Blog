@@ -15,7 +15,7 @@ import os
 import re
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlparse, urljoin
 
 from flask import (
@@ -408,7 +408,7 @@ def forgot_password():
             # Generate reset token (valid for 1 hour)
             import secrets
             token = secrets.token_urlsafe(32)
-            expires_at = datetime.now() + datetime.timedelta(hours=1)
+            expires_at = datetime.now() + timedelta(hours=1)
 
             # Store token in database
             db.create_password_reset_token(user['id'], token, expires_at)
@@ -416,7 +416,7 @@ def forgot_password():
             # Send email with reset link
             reset_url = url_for('reset_password', token=token, _external=True)
             import email_utils
-            email_utils.send_password_reset_email(user['email'], user['username'], reset_url)
+            email_utils.send_password_reset_email(app, user['email'], user['username'], reset_url)
 
             logger.info(f"Password reset requested for user_id: {user['id']}")
 
