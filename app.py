@@ -1225,11 +1225,8 @@ def admin_sync_subscription(user_id):
         if not active_sub:
             return jsonify({'success': False, 'error': 'No active subscription found in Stripe'}), 404
 
-        # Determine plan based on interval
-        # Use bracket notation to avoid conflict with dict.items() method
-        logger.info(f"Active sub type: {type(active_sub)}")
-        items_list = active_sub['items']['data'] if isinstance(active_sub, dict) else active_sub.items.data
-        interval = items_list[0]['price']['recurring']['interval'] if isinstance(items_list[0], dict) else items_list[0].price.recurring.interval
+        # Determine plan based on interval (same as fix_subscription.py)
+        interval = active_sub.items.data[0].price.recurring.interval
         plan_name = 'premium_annual' if interval == 'year' else 'premium_monthly'
 
         # Get plan from database
@@ -1237,30 +1234,25 @@ def admin_sync_subscription(user_id):
         if not plan:
             return jsonify({'success': False, 'error': f'Plan {plan_name} not found in database'}), 404
 
-        # Update subscription - handle both dict and object
-        sub_id = active_sub['id'] if isinstance(active_sub, dict) else active_sub.id
-        sub_status = active_sub['status'] if isinstance(active_sub, dict) else active_sub.status
-        period_start = active_sub['current_period_start'] if isinstance(active_sub, dict) else active_sub.current_period_start
-        period_end = active_sub['current_period_end'] if isinstance(active_sub, dict) else active_sub.current_period_end
-
+        # Update subscription (same as fix_subscription.py)
         success = db.upsert_user_subscription(
             user_id=user_id,
             plan_id=plan['plan_id'],
-            stripe_subscription_id=sub_id,
+            stripe_subscription_id=active_sub.id,
             stripe_customer_id=stripe_customer_id,
-            status=sub_status,
-            current_period_start=datetime.fromtimestamp(period_start),
-            current_period_end=datetime.fromtimestamp(period_end)
+            status=active_sub.status,
+            current_period_start=datetime.fromtimestamp(active_sub.current_period_start),
+            current_period_end=datetime.fromtimestamp(active_sub.current_period_end)
         )
 
         if success:
             is_premium = db.is_user_premium(user_id)
-            logger.info(f"✅ Admin synced subscription for user {user_id}: {plan_name} (status: {sub_status})")
+            logger.info(f"✅ Admin synced subscription for user {user_id}: {plan_name} (status: {active_sub.status})")
             return jsonify({
                 'success': True,
                 'message': f'Subscription synced successfully',
                 'plan': plan_name,
-                'status': sub_status,
+                'status': active_sub.status,
                 'is_premium': is_premium
             })
         else:
