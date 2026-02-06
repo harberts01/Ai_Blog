@@ -1210,23 +1210,31 @@ def admin_sync_subscription(user_id):
         )
         logger.info(f"Subscriptions type: {type(subscriptions)}, has data: {hasattr(subscriptions, 'data')}")
 
-        # Find active subscription
-        active_sub = None
-        if hasattr(subscriptions, 'data'):
-            subscription_list = subscriptions.data
-        else:
-            subscription_list = subscriptions
+        # Find active subscription ID
+        active_sub_id = None
+        for sub in subscriptions.data:
+            # Access status using getattr to handle both dict and object
+            status = getattr(sub, 'status', None) or sub.get('status') if isinstance(sub, dict) else sub.status
+            sub_id = getattr(sub, 'id', None) or sub.get('id') if isinstance(sub, dict) else sub.id
 
-        for sub in subscription_list:
-            if sub.status in ['active', 'trialing']:
-                active_sub = sub
+            if status in ['active', 'trialing']:
+                active_sub_id = sub_id
                 break
 
-        if not active_sub:
+        if not active_sub_id:
             return jsonify({'success': False, 'error': 'No active subscription found in Stripe'}), 404
 
-        # Determine plan based on interval (same as fix_subscription.py)
-        interval = active_sub.items.data[0].price.recurring.interval
+        # Retrieve the full subscription object with all nested data expanded
+        logger.info(f"Retrieving full subscription object: {active_sub_id}")
+        active_sub = stripe.Subscription.retrieve(
+            active_sub_id,
+            expand=['items.data.price']
+        )
+
+        logger.info(f"Retrieved subscription type: {type(active_sub)}")
+
+        # Now access the subscription data (should work with full object)
+        interval = active_sub['items']['data'][0]['price']['recurring']['interval']
         plan_name = 'premium_annual' if interval == 'year' else 'premium_monthly'
 
         # Get plan from database
