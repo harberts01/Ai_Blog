@@ -284,6 +284,15 @@ a:hover {
   box-shadow: var(--shadow-lg);
 }
 
+.hover-lift {
+  transition: all 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
 .tool-card {
   overflow: hidden;
 }
@@ -294,6 +303,104 @@ a:hover {
 
 .tool-icon i {
   transition: var(--transition);
+}
+
+/* ========== Tool Page Styles ========== */
+.tool-hero-section {
+  background: linear-gradient(180deg, #f9fafb 0%, #ffffff 100%);
+}
+
+.tool-icon-large {
+  flex-shrink: 0;
+}
+
+.tool-icon-display {
+  font-size: 4rem;
+  display: block;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.tool-follow-section .btn-lg {
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  transition: all 0.3s ease;
+}
+
+.tool-follow-section .btn-lg:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15) !important;
+}
+
+.tool-posts-section .badge {
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}
+
+.post-card {
+  transition: all 0.3s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.post-card:hover {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.post-card .card-title a {
+  color: inherit;
+  transition: color 0.2s ease;
+}
+
+.post-card:hover .card-title a {
+  color: var(--primary-color) !important;
+}
+
+.post-meta {
+  font-size: 0.875rem;
+}
+
+.tool-cta-section {
+  background: linear-gradient(135deg, var(--primary-color) 0%, #7c3aed 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.tool-cta-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.tool-cta-section > .container {
+  position: relative;
+  z-index: 1;
+}
+
+.cta-icon i {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+.empty-state-icon {
+  animation: float 3s ease-in-out infinite;
 }
 
 .post-card .card-title {
@@ -615,6 +722,25 @@ html:not([data-theme="dark"]) #navbarNav .theme-label:first-child {
 }
 
 /* ========== Responsive - Mobile First ========== */
+
+/* Desktop navigation - xl breakpoint and above */
+@media (min-width: 1200px) {
+  /* Ensure mobile-specific classes don't affect desktop */
+  .mobile-nav-link {
+    background-color: transparent !important;
+    padding: 0.5rem 1rem !important;
+    margin: 0 0.25rem !important;
+    border-radius: 0.5rem !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  .mobile-nav-link:hover {
+    transform: none !important;
+  }
+}
 
 /* Tablet and below - for navbar collapse at xl breakpoint */
 @media (max-width: 1199.98px) {
@@ -1325,6 +1451,52 @@ html:not([data-theme="dark"]) #navbarNav .theme-label:first-child {
   .display-4 { font-size: 1.75rem; }
   .display-5 { font-size: 1.5rem; }
   .lead { font-size: 1rem; }
+
+  /* Tool Page Mobile Styles */
+  .tool-icon-display {
+    font-size: 3rem;
+    padding: 0.75rem;
+  }
+
+  .tool-follow-section {
+    margin-top: 1rem;
+  }
+
+  .tool-follow-section .btn-lg {
+    width: 100% !important;
+    padding: 1rem 1.5rem !important;
+  }
+
+  .post-card {
+    margin-bottom: 1rem;
+  }
+
+  .post-meta {
+    font-size: 0.8rem;
+  }
+
+  .tool-cta-section .btn-lg {
+    width: 100%;
+    padding: 1rem 1.5rem !important;
+  }
+
+  .tool-cta-section {
+    text-align: center !important;
+  }
+
+  .tool-cta-section .row {
+    margin: 0;
+  }
+
+  .tool-cta-section .col-lg-8 {
+    padding: 0 1rem;
+  }
+
+  .tool-cta-section h2,
+  .tool-cta-section p,
+  .tool-cta-section .lead {
+    text-align: center !important;
+  }
 
   /* Container padding */
   .container {
@@ -2054,6 +2226,44 @@ html:not([data-theme="dark"]) #navbarNav .theme-label:first-child {
 
 [data-theme="dark"] .lead {
   color: #e2e8f0;
+}
+
+/* Dark mode - Tool Page */
+[data-theme="dark"] .tool-hero-section {
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+}
+
+[data-theme="dark"] .tool-icon-display {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .tool-cta-section {
+  background: linear-gradient(135deg, #3730a3 0%, #5b21b6 100%);
+}
+
+[data-theme="dark"] .post-card {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .post-card:hover {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .post-card .card-title a {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .post-card:hover .card-title a {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .post-meta {
+  color: var(--text-muted) !important;
+  border-color: var(--border-color) !important;
 }
 
 /* Dark mode toggle button */

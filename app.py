@@ -146,7 +146,7 @@ def word_count_filter(content):
 def home():
     """Home page showing all recent posts"""
     page = request.args.get('page', 1, type=int)
-    per_page = 12
+    per_page = 9
     posts, total = db.get_all_posts(page=page, per_page=per_page)
     tools = db.get_all_tools()
     total_pages = (total + per_page - 1) // per_page

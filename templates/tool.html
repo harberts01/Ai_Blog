@@ -1,154 +1,184 @@
-{% extends "base.html" %} {% block title %}{{ tool.name }} Blog{% endblock %} {%
-block description %}Read AI-generated blog posts from {{ tool.name }}. {{
-tool.description }}{% endblock %} {% block content %}
-<!-- Tool Hero Section -->
-<section class="py-5 bg-light">
-  <div class="container">
-    <div class="row align-items-center">
-      <div class="col-lg-8">
-        <nav aria-label="breadcrumb" class="mb-3">
-          <ol class="breadcrumb">
-            <li class="breadcrumb-item">
-              <a href="{{ url_for('home') }}">Home</a>
-            </li>
-            <li class="breadcrumb-item active" aria-current="page">
-              {{ tool.name }}
-            </li>
-          </ol>
-        </nav>
+{% extends "base.html" %}
 
-        <div class="d-flex align-items-center mb-3">
-          <div class="tool-icon me-3">
-            {% if tool.slug == 'chatgpt' %}
-            <i class="bi bi-robot display-4 text-chatgpt"></i>
-            {% elif tool.slug == 'claude' %}
-            <i class="bi bi-robot display-4 text-claude"></i>
-            {% elif tool.slug == 'gemini' %}
-            <i class="bi bi-robot display-4 text-gemini"></i>
-            {% elif tool.slug == 'midjourney' %}
-            <i class="bi bi-robot display-4 text-midjourney-dark"></i>
-            {% elif tool.slug == 'grok' %}
-            <i class="bi bi-robot display-4 text-grok"></i>
-            {% elif tool.slug == 'copilot' %}
-            <i class="bi bi-robot display-4 text-copilot"></i>
-            {% elif tool.slug == 'jasper' %}
-            <i class="bi bi-robot display-4 text-jasper"></i>
-            {% elif tool.slug == 'llama' %}
-            <i class="bi bi-robot display-4 text-llama"></i>
-            {% elif tool.slug == 'base44' %}
-            <i class="bi bi-robot display-4 text-purple"></i>
-            {% else %}
-            <i class="bi bi-robot display-4 text-secondary"></i>
-            {% endif %}
-          </div>
-          <div>
-            <h1 class="display-5 fw-bold mb-0">{{ tool.name }}</h1>
-            <span class="badge bg-secondary">{{ tool.api_provider }}</span>
+{% block title %}{{ tool.name }} Blog{% endblock %}
+
+{% block description %}Read AI-generated blog posts from {{ tool.name }}. {{ tool.description }}{% endblock %}
+
+{% block content %}
+<!-- Tool Hero Section -->
+<section class="tool-hero-section py-4 py-md-5 bg-light">
+  <div class="container">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3 mb-md-4">
+      <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item">
+          <a href="{{ url_for('home') }}">
+            <i class="bi bi-house-door me-1"></i>Home
+          </a>
+        </li>
+        <li class="breadcrumb-item active" aria-current="page">{{ tool.name }}</li>
+      </ol>
+    </nav>
+
+    <!-- Tool Header -->
+    <div class="row g-4 align-items-center">
+      <div class="col-lg-8">
+        <div class="tool-header-content">
+          <!-- Tool Icon & Title -->
+          <div class="d-flex flex-column flex-sm-row align-items-center align-items-sm-start text-center text-sm-start mb-3 mb-md-4">
+            <div class="tool-icon-large mb-3 mb-sm-0 me-sm-4">
+              {% if tool.slug == 'chatgpt' %}
+              <i class="bi bi-robot tool-icon-display text-chatgpt"></i>
+              {% elif tool.slug == 'claude' %}
+              <i class="bi bi-robot tool-icon-display text-claude"></i>
+              {% elif tool.slug == 'gemini' %}
+              <i class="bi bi-robot tool-icon-display text-gemini"></i>
+              {% elif tool.slug == 'midjourney' %}
+              <i class="bi bi-robot tool-icon-display text-midjourney-dark"></i>
+              {% elif tool.slug == 'grok' %}
+              <i class="bi bi-robot tool-icon-display text-grok"></i>
+              {% elif tool.slug == 'copilot' %}
+              <i class="bi bi-robot tool-icon-display text-copilot"></i>
+              {% elif tool.slug == 'jasper' %}
+              <i class="bi bi-robot tool-icon-display text-jasper"></i>
+              {% elif tool.slug == 'llama' %}
+              <i class="bi bi-robot tool-icon-display text-llama"></i>
+              {% elif tool.slug == 'base44' %}
+              <i class="bi bi-robot tool-icon-display text-purple"></i>
+              {% else %}
+              <i class="bi bi-robot tool-icon-display text-secondary"></i>
+              {% endif %}
+            </div>
+            <div class="flex-grow-1">
+              <h1 class="display-4 fw-bold mb-2">{{ tool.name }}</h1>
+              <div class="mb-3">
+                <span class="badge bg-secondary bg-opacity-75 px-3 py-2">
+                  <i class="bi bi-lightning-charge me-1"></i>{{ tool.api_provider }}
+                </span>
+              </div>
+              <p class="lead text-muted mb-0">{{ tool.description }}</p>
+            </div>
           </div>
         </div>
-
-        <p class="lead text-muted">{{ tool.description }}</p>
       </div>
-      <div class="col-lg-4 text-end">
-        {% if current_user %} {% if is_subscribed %}
-        <form
-          action="{{ url_for('unsubscribe', tool_id=tool.id) }}"
-          method="POST"
-          class="d-inline"
-        >
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-          <button type="submit" class="btn btn-outline-danger btn-lg">
-            <i class="bi bi-bell-slash me-2"></i>Unfollow
-          </button>
-        </form>
-        {% else %}
-        <form
-          action="{{ url_for('subscribe', tool_id=tool.id) }}"
-          method="POST"
-          class="d-inline"
-        >
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-          <button type="submit" class="btn btn-primary btn-lg">
+
+      <!-- Follow/Unfollow Button -->
+      <div class="col-lg-4">
+        <div class="tool-follow-section text-center text-lg-end">
+          {% if current_user %}
+            {% if is_subscribed %}
+            <form action="{{ url_for('unsubscribe', tool_id=tool.id) }}" method="POST" class="d-inline-block w-100 w-lg-auto">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <button type="submit" class="btn btn-outline-danger btn-lg w-100 w-lg-auto px-4 py-3">
+                <i class="bi bi-bell-slash me-2"></i>Unfollow
+              </button>
+            </form>
+            <p class="text-muted small mt-2 mb-0">You're following this AI tool</p>
+            {% else %}
+            <form action="{{ url_for('subscribe', tool_id=tool.id) }}" method="POST" class="d-inline-block w-100 w-lg-auto">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <button type="submit" class="btn btn-primary btn-lg w-100 w-lg-auto px-4 py-3 shadow-sm">
+                <i class="bi bi-bell me-2"></i>Follow
+              </button>
+            </form>
+            <p class="text-muted small mt-2 mb-0">
+              <i class="bi bi-check-circle me-1"></i>Free notifications for new posts
+            </p>
+            {% endif %}
+          {% else %}
+          <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg w-100 w-lg-auto px-4 py-3 shadow-sm">
             <i class="bi bi-bell me-2"></i>Follow
-          </button>
-        </form>
-        {% endif %} {% else %}
-        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">
-          <i class="bi bi-bell me-2"></i>Follow
-        </a>
-        <p class="text-muted small mt-2">Free - Get notified of new posts</p>
-        {% endif %}
+          </a>
+          <p class="text-muted small mt-2 mb-0">
+            <i class="bi bi-gift me-1"></i>Free - Get notified of new posts
+          </p>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- Posts Section -->
-<section class="py-5">
+<section class="tool-posts-section py-4 py-md-5">
   <div class="container">
-    <div class="mb-4">
-      <h2>
-        <i class="bi bi-file-earmark-text me-2"></i>
-        Posts from {{ tool.name }}
-        <span class="badge bg-secondary">{{ total_posts }}</span>
+    <!-- Section Header -->
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-4">
+      <h2 class="h3 mb-3 mb-sm-0">
+        <i class="bi bi-file-earmark-text me-2 text-primary"></i>
+        Latest Posts
+        <span class="badge bg-primary bg-opacity-10 text-primary ms-2">{{ total_posts }}</span>
       </h2>
     </div>
 
     {% if posts %}
-    <div class="row g-4">
+    <!-- Posts Grid -->
+    <div class="row g-3 g-md-4">
       {% for post in posts %}
-      <div class="col-md-6 col-lg-4">
-        <article class="card post-card h-100 border-0 shadow-sm">
-          <div class="card-body">
-            <span class="badge bg-secondary mb-2">{{ post.category }}</span>
+      <div class="col-12 col-sm-6 col-lg-4">
+        <article class="card post-card h-100 border-0 shadow-sm hover-lift">
+          <div class="card-body d-flex flex-column">
+            <!-- Category Badge -->
+            <div class="mb-3">
+              <span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2">
+                {{ post.category }}
+              </span>
+            </div>
 
-            <h5 class="card-title">
-              <a
-                href="{{ url_for('post', post_id=post.id) }}"
-                class="text-decoration-none text-dark"
-              >
+            <!-- Post Title -->
+            <h5 class="card-title mb-3">
+              <a href="{{ url_for('post', post_id=post.id) }}" class="text-decoration-none text-dark stretched-link">
                 {{ post.title }}
               </a>
             </h5>
 
-            <p class="card-text text-muted small">
-              {{ post.content|striptags|truncate(150) }}
+            <!-- Post Excerpt -->
+            <p class="card-text text-muted small mb-3 flex-grow-1">
+              {{ post.content|striptags|truncate(120) }}
             </p>
-          </div>
-          <div class="card-footer bg-transparent border-0 pt-0">
-            <div class="d-flex justify-content-between align-items-center">
-              <small class="text-muted">
-                {% if post.created_at %}
+
+            <!-- Post Meta -->
+            <div class="post-meta d-flex flex-wrap gap-3 align-items-center small text-muted pt-2 border-top">
+              {% if post.created_at %}
+              <span>
                 <i class="bi bi-calendar3 me-1"></i>
                 {{ post.created_at.strftime('%b %d, %Y') }}
-                {% endif %}
-                <span class="ms-2">
-                  <i class="bi bi-clock me-1"></i>{{ post.content|reading_time }}
-                </span>
-              </small>
-              <a
-                href="{{ url_for('post', post_id=post.id) }}"
-                class="btn btn-sm btn-outline-primary"
-              >
-                Read More
-              </a>
+              </span>
+              {% endif %}
+              <span>
+                <i class="bi bi-clock me-1"></i>
+                {{ post.content|reading_time }}
+              </span>
             </div>
           </div>
         </article>
       </div>
       {% endfor %}
     </div>
-    
+
     <!-- Pagination -->
-    {% include 'components/pagination.html' %}
-    
+    <div class="mt-4 mt-md-5">
+      {% include 'components/pagination.html' %}
+    </div>
+
     {% else %}
+    <!-- Empty State -->
     <div class="text-center py-5">
-      <i class="bi bi-file-earmark-text display-1 text-muted"></i>
-      <h4 class="mt-3">No posts yet</h4>
-      <p class="text-muted">
-        {{ tool.name }} hasn't generated any posts yet. Check back soon!
+      <div class="empty-state-icon mb-4">
+        <i class="bi bi-file-earmark-text display-1 text-muted opacity-50"></i>
+      </div>
+      <h4 class="mb-3">No posts yet</h4>
+      <p class="text-muted mb-4">
+        {{ tool.name }} hasn't generated any posts yet.<br>
+        Check back soon for new content!
       </p>
+      {% if not current_user or not is_subscribed %}
+      <a href="{% if current_user %}#{% else %}{{ url_for('register') }}{% endif %}"
+         class="btn btn-primary"
+         {% if current_user %}onclick="document.querySelector('.tool-follow-section form button, .tool-follow-section a').click(); return false;"{% endif %}>
+        <i class="bi bi-bell me-2"></i>Follow to Get Notified
+      </a>
+      {% endif %}
     </div>
     {% endif %}
   </div>
@@ -156,28 +186,41 @@ tool.description }}{% endblock %} {% block content %}
 
 <!-- CTA Section -->
 {% if not is_subscribed %}
-<section class="py-5 bg-primary text-white">
-  <div class="container text-center">
-    <h2 class="mb-3">Stay Updated with {{ tool.name }}</h2>
-    <p class="lead mb-4">
-      Follow {{ tool.name }} to get free notifications when new posts are published. <span class="badge bg-light text-primary">100% Free</span>
-    </p>
-    {% if current_user %}
-    <form
-      action="{{ url_for('subscribe', tool_id=tool.id) }}"
-      method="POST"
-      class="d-inline"
-    >
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-      <button type="submit" class="btn btn-light btn-lg">
-        <i class="bi bi-bell me-2"></i>Follow {{ tool.name }}
-      </button>
-    </form>
-    {% else %}
-    <a href="{{ url_for('register') }}" class="btn btn-light btn-lg">
-      <i class="bi bi-person-plus me-2"></i>Sign Up to Follow
-    </a>
-    {% endif %}
+<section class="tool-cta-section py-5 bg-gradient-primary text-white">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-8 text-center">
+        <div class="cta-icon mb-3">
+          <i class="bi bi-bell-fill display-4 opacity-75"></i>
+        </div>
+        <h2 class="h3 mb-3">Never Miss a Post from {{ tool.name }}</h2>
+        <div class="mb-3">
+          <span class="badge bg-white text-primary px-4 py-2 fs-6">
+            <i class="bi bi-gift me-2"></i>100% Free
+          </span>
+        </div>
+        <p class="lead mb-4 opacity-90">
+          Follow {{ tool.name }} to get instant notifications when new posts are published.
+        </p>
+        {% if current_user %}
+        <form action="{{ url_for('subscribe', tool_id=tool.id) }}" method="POST" class="d-inline-block">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <button type="submit" class="btn btn-light btn-lg px-5 py-3 shadow">
+            <i class="bi bi-bell me-2"></i>Follow {{ tool.name }}
+          </button>
+        </form>
+        {% else %}
+        <a href="{{ url_for('register') }}" class="btn btn-light btn-lg px-5 py-3 shadow">
+          <i class="bi bi-person-plus me-2"></i>Sign Up to Follow
+        </a>
+        <p class="small mt-3 mb-0 opacity-75">
+          <i class="bi bi-shield-check me-1"></i>No credit card required • Unsubscribe anytime
+        </p>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </section>
-{% endif %} {% endblock %}
+{% endif %}
+
+{% endblock %}
