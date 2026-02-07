@@ -49,6 +49,9 @@ env/
 .spyderproject
 .spyproject
 
+# Claude
+.claude/
+
 # OS Files
 .DS_Store
 .DS_Store?
