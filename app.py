@@ -46,7 +46,7 @@ from flask_limiter.util import get_remote_address
 
 from config import Config
 import database as db
-from auth import login_required, admin_required, get_current_user, login_user, logout_user
+from auth import login_required, admin_required, premium_required, get_current_user, login_user, logout_user
 from utils import sanitize_input, validate_email
 import ai_generators
 
@@ -260,14 +260,19 @@ def post(post_id):
             can_view_full = False
             limit_reason = 'not_logged_in'
     
-    return render_template("post.html", 
-                          post=post_data, 
-                          comments=comments, 
+    active_matchups = db.get_active_matchups_for_post(post_id)
+    tool_rank_badges = db.get_tool_rank_badges()
+
+    return render_template("post.html",
+                          post=post_data,
+                          comments=comments,
                           is_bookmarked=is_bookmarked,
                           is_premium=is_premium,
                           can_view_full=can_view_full,
                           limit_reason=limit_reason,
-                          free_posts_remaining=free_posts_remaining)
+                          free_posts_remaining=free_posts_remaining,
+                          active_matchups=active_matchups,
+                          tool_rank_badges=tool_rank_badges)
 
 
 @app.route("/post/<int:post_id>/comment", methods=["POST"])
@@ -1483,6 +1488,40 @@ def cron_cleanup():
         return jsonify({'success': False, 'error': error_msg}), 500
 
 
+@app.route("/cron/recompute-stats")
+@limiter.exempt
+def cron_recompute_stats():
+    """Cron endpoint for recomputing tool leaderboard stats"""
+    token = request.args.get('token')
+    if not token or token != Config.CRON_SECRET:
+        logger.warning("Unauthorized cron attempt for recompute-stats")
+        abort(403)
+
+    try:
+        logger.info("Cron: Recomputing tool stats...")
+        result = db.recompute_tool_stats()
+        h2h_result = db.recompute_h2h_stats()
+        user_stats_result = db.recompute_stale_user_stats()
+        if result:
+            logger.info(f"Cron: Tool stats recomputed — {result['tools_updated']} rows in {result['duration_ms']}ms")
+            if h2h_result:
+                logger.info(f"Cron: H2H stats recomputed — {h2h_result['pairs_updated']} pairs in {h2h_result['duration_ms']}ms")
+            if user_stats_result:
+                logger.info(f"Cron: User vote stats recomputed — {user_stats_result['users_updated']} users in {user_stats_result['duration_ms']}ms")
+            response = {'success': True, **result}
+            if h2h_result:
+                response['h2h_pairs_updated'] = h2h_result['pairs_updated']
+                response['h2h_duration_ms'] = h2h_result['duration_ms']
+            if user_stats_result:
+                response['user_stats_updated'] = user_stats_result['users_updated']
+            return jsonify(response)
+        return jsonify({'success': False, 'error': 'Recomputation returned None'}), 500
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Cron recompute-stats failed: {error_msg}")
+        return jsonify({'success': False, 'error': error_msg}), 500
+
+
 # ============== Error Handlers ==============
 
 @app.errorhandler(404)
@@ -1495,122 +1534,36 @@ def server_error(e):
     return render_template('500.html'), 500
 
 
-# ============== AI Comparison Routes ==============
-
-@app.route("/compare")
-def compare_page():
-    """AI comparison landing page"""
-    categories = db.get_categories_with_counts()
-    recent_comparisons = db.get_recent_comparisons(limit=5)
-    return render_template(
-        "compare.html",
-        categories=categories,
-        recent_comparisons=recent_comparisons
-    )
-
-
-@app.route("/compare/category/<category>")
-def compare_by_category(category):
-    """Compare posts by category from different AI tools"""
-    posts = db.get_posts_by_category_for_comparison(category)
-    
-    if len(posts) < 2:
-        flash('Not enough posts from different AI tools in this category for comparison.', 'warning')
-        return redirect(url_for('compare_page'))
-    
-    # Create a comparison
-    post_ids = [p['id'] for p in posts]
-    comparison_id = db.create_comparison(f"Category: {category}", post_ids)
-    
-    return redirect(url_for('view_comparison', comparison_id=comparison_id))
-
-
-@app.route("/compare/<int:comparison_id>")
-def view_comparison(comparison_id):
-    """View a specific comparison with voting"""
-    comparison = db.get_comparison_by_id(comparison_id)
-    if not comparison:
-        abort(404)
-    
-    vote_counts = db.get_vote_counts(comparison_id)
-    total_votes = sum(vote_counts.values())
-    
-    user_vote = None
-    user = get_current_user()
-    if user:
-        user_vote = db.get_user_vote(comparison_id, user['id'])
-    
-    # Calculate style metrics for each post
-    for post in comparison['posts']:
-        content = post.get('content', '')
-        post['metrics'] = calculate_content_metrics(content)
-        post['votes'] = vote_counts.get(post['id'], 0)
-        post['vote_percentage'] = (post['votes'] / total_votes * 100) if total_votes > 0 else 0
-    
-    return render_template(
-        "comparison.html",
-        comparison=comparison,
-        user_vote=user_vote,
-        total_votes=total_votes
-    )
-
-
-@app.route("/compare/<int:comparison_id>/vote/<int:post_id>", methods=["POST"])
-@login_required
-def vote_comparison(comparison_id, post_id):
-    """Vote for a post in a comparison"""
-    user = get_current_user()
-    
-    # Verify post is part of comparison
-    comparison = db.get_comparison_by_id(comparison_id)
-    if not comparison:
-        abort(404)
-    
-    post_ids = [p['id'] for p in comparison['posts']]
-    if post_id not in post_ids:
-        abort(400)
-    
-    db.add_vote(comparison_id, user['id'], post_id)
-    flash('Your vote has been recorded!', 'success')
-    
-    return redirect(url_for('view_comparison', comparison_id=comparison_id))
-
+# ============== Content Metrics Helper ==============
 
 def calculate_content_metrics(content):
     """Calculate style metrics for content"""
     import re
     from html import unescape
-    
+
     # Strip HTML tags
     text = re.sub(r'<[^>]+>', '', content)
     text = unescape(text)
-    
-    # Word count
+
     words = text.split()
     word_count = len(words)
-    
-    # Sentence count (approximate)
+
     sentences = re.split(r'[.!?]+', text)
     sentence_count = len([s for s in sentences if s.strip()])
-    
-    # Average words per sentence
+
     avg_words_per_sentence = word_count / sentence_count if sentence_count > 0 else 0
-    
-    # Paragraph count
+
     paragraphs = [p for p in text.split('\n\n') if p.strip()]
     paragraph_count = len(paragraphs) or 1
-    
-    # Unique word ratio (vocabulary richness)
+
     unique_words = len(set(w.lower() for w in words))
     vocab_richness = (unique_words / word_count * 100) if word_count > 0 else 0
-    
-    # Reading level estimate (simplified Flesch-Kincaid approximation)
-    # Lower = easier to read
+
     syllable_estimate = sum(1 for word in words for char in word if char.lower() in 'aeiou')
     avg_syllables = syllable_estimate / word_count if word_count > 0 else 0
     reading_level = round(0.39 * avg_words_per_sentence + 11.8 * avg_syllables - 15.59, 1)
-    reading_level = max(0, min(18, reading_level))  # Clamp between 0-18
-    
+    reading_level = max(0, min(18, reading_level))
+
     return {
         'word_count': word_count,
         'sentence_count': sentence_count,
@@ -1619,6 +1572,628 @@ def calculate_content_metrics(content):
         'vocab_richness': round(vocab_richness, 1),
         'reading_level': reading_level
     }
+
+
+# ============== Dashboard Routes ==============
+
+@app.route("/dashboard")
+def dashboard():
+    """Compare & Vote Dashboard — leaderboard and analytics"""
+    return render_template("dashboard.html")
+
+
+@app.route("/api/dashboard/leaderboard")
+@premium_required
+def api_dashboard_leaderboard():
+    """API: Get leaderboard data for a category (premium only)"""
+    category = request.args.get('category', 'overall')
+    min_votes = request.args.get('min_votes', 30, type=int)
+
+    if category not in db.VOTE_CATEGORIES:
+        return jsonify({
+            'error': {
+                'code': 'INVALID_CATEGORY',
+                'message': f'Invalid category. Must be one of: {", ".join(db.VOTE_CATEGORIES)}',
+                'details': {}
+            }
+        }), 400
+
+    # Check cache
+    cache_key = (category, min_votes)
+    cached = db._leaderboard_cache.get(cache_key)
+    if cached is not None:
+        data, age = cached
+        data['cached'] = True
+        data['cache_age_seconds'] = round(age, 1)
+        return jsonify(data)
+
+    above, below = db.get_tool_stats_for_leaderboard(category, min_votes)
+
+    # Build leaderboard with competition ranking
+    leaderboard = []
+    rank = 1
+    for i, tool in enumerate(above):
+        if i > 0 and tool['win_rate'] != above[i - 1]['win_rate']:
+            rank = i + 1
+
+        # Confidence badge
+        tv = tool['total_votes']
+        if tv >= 100:
+            confidence = 'high'
+        elif tv >= 30:
+            confidence = 'medium'
+        else:
+            confidence = 'low'
+
+        # Trend delta
+        if tool['win_rate_7d'] is not None and tool['win_rate_prev_7d'] is not None and tool['votes_last_7d'] >= 5:
+            delta_val = (tool['win_rate_7d'] - tool['win_rate_prev_7d']) * 100
+            trend_delta = f"{delta_val:+.1f}%"
+        else:
+            trend_delta = None
+
+        # Category breakdown
+        breakdown = db.get_tool_category_breakdown(tool['tool_id'])
+
+        leaderboard.append({
+            'rank': rank,
+            'tool_id': tool['tool_id'],
+            'tool_name': tool['name'],
+            'tool_slug': tool['slug'],
+            'total_votes': tool['total_votes'],
+            'total_wins': tool['total_wins'],
+            'win_rate': tool['win_rate'],
+            'win_rate_display': f"{tool['win_rate'] * 100:.1f}%",
+            'votes_last_7d': tool['votes_last_7d'],
+            'win_rate_7d': tool['win_rate_7d'],
+            'trend': tool['trend'],
+            'trend_delta': trend_delta,
+            'confidence': confidence,
+            'category_breakdown': breakdown,
+        })
+
+    # Below threshold
+    below_list = []
+    for tool in below:
+        entry = {
+            'tool_id': tool['tool_id'],
+            'tool_name': tool['name'],
+            'tool_slug': tool['slug'],
+            'status': tool['status'],
+            'total_votes': tool['total_votes'],
+        }
+        if tool['status'] == 'pending':
+            entry['message'] = 'Pending release'
+        else:
+            entry['message'] = f"{tool['total_votes']} votes so far"
+        below_list.append(entry)
+
+    computed_at = above[0]['computed_at'] if above else (below[0]['computed_at'] if below else None)
+
+    response_data = {
+        'success': True,
+        'category': category,
+        'min_votes': min_votes,
+        'computed_at': computed_at,
+        'leaderboard': leaderboard,
+        'below_threshold': below_list,
+        'cached': False,
+        'cache_age_seconds': 0,
+    }
+
+    db._leaderboard_cache.set(cache_key, response_data)
+    return jsonify(response_data)
+
+
+@app.route("/api/dashboard/leaderboard/teaser")
+def api_dashboard_leaderboard_teaser():
+    """API: Get limited leaderboard teaser (no auth required)"""
+    above, _ = db.get_tool_stats_for_leaderboard('overall', min_votes=0)
+
+    teaser = []
+    for tool in above[:2]:
+        wr = tool['win_rate']
+        # Round to nearest 5%
+        rounded = round(wr * 20) * 5
+        teaser.append({
+            'tool_name': tool['name'],
+            'tool_slug': tool['slug'],
+            'win_rate_rounded': rounded,
+        })
+
+    return jsonify({
+        'success': True,
+        'teaser': teaser,
+    })
+
+
+@app.route("/api/dashboard/matrix")
+@premium_required
+def api_dashboard_matrix():
+    """API: Get head-to-head matrix data for a category (premium only)"""
+    category = request.args.get('category', 'overall')
+
+    if category not in db.VOTE_CATEGORIES:
+        return jsonify({
+            'error': {
+                'code': 'INVALID_CATEGORY',
+                'message': f'Invalid category. Must be one of: {", ".join(db.VOTE_CATEGORIES)}',
+                'details': {}
+            }
+        }), 400
+
+    # Check cache
+    cache_key = ('matrix', category)
+    cached = db._leaderboard_cache.get(cache_key)
+    if cached is not None:
+        data, age = cached
+        data['cached'] = True
+        data['cache_age_seconds'] = round(age, 1)
+        return jsonify(data)
+
+    matrix_data = db.get_h2h_matrix(category)
+    if matrix_data is None:
+        return jsonify({'success': False, 'error': 'Failed to load matrix data'}), 500
+
+    response_data = {
+        'success': True,
+        'category': category,
+        'tools': matrix_data['tools'],
+        'cells': matrix_data['cells'],
+        'computed_at': matrix_data['computed_at'],
+        'cached': False,
+        'cache_age_seconds': 0,
+    }
+
+    db._leaderboard_cache.set(cache_key, response_data)
+    return jsonify(response_data)
+
+
+@app.route("/api/dashboard/matrix/pair/<slug_a>/<slug_b>")
+@premium_required
+def api_dashboard_matrix_pair(slug_a, slug_b):
+    """API: Get detailed head-to-head data for a specific tool pair (premium only)"""
+    tool_a = db.get_tool_by_slug(slug_a)
+    tool_b = db.get_tool_by_slug(slug_b)
+
+    if not tool_a or not tool_b:
+        return jsonify({
+            'error': {
+                'code': 'TOOL_NOT_FOUND',
+                'message': 'One or both tools not found',
+                'details': {}
+            }
+        }), 404
+
+    if tool_a['id'] == tool_b['id']:
+        return jsonify({
+            'error': {
+                'code': 'SAME_TOOL',
+                'message': 'Cannot compare a tool with itself',
+                'details': {}
+            }
+        }), 400
+
+    # Canonical ordering by integer ID
+    id_a, id_b = tool_a['id'], tool_b['id']
+    canonical_a_id = min(id_a, id_b)
+    canonical_b_id = max(id_a, id_b)
+
+    # Check cache
+    cache_key = ('h2h_pair', canonical_a_id, canonical_b_id)
+    cached = db._leaderboard_cache.get(cache_key)
+    if cached is not None:
+        data, age = cached
+        data['cached'] = True
+        data['cache_age_seconds'] = round(age, 1)
+        return jsonify(data)
+
+    detail = db.get_h2h_pair_detail(canonical_a_id, canonical_b_id)
+    if detail is None:
+        return jsonify({'success': False, 'error': 'Failed to load pair detail'}), 500
+
+    # Determine which tool info is A and B in canonical order
+    if tool_a['id'] == canonical_a_id:
+        info_a, info_b = tool_a, tool_b
+    else:
+        info_a, info_b = tool_b, tool_a
+
+    # Check user votes on recent matchups
+    user_id = session.get('user_id')
+    for matchup in detail['recent_matchups']:
+        matchup['user_has_voted'] = False
+        if user_id:
+            votes = db.get_user_votes_for_matchup(user_id, matchup['matchup_id'])
+            if votes:
+                matchup['user_has_voted'] = True
+
+    response_data = {
+        'success': True,
+        'tool_a': {'tool_id': info_a['id'], 'name': info_a['name'], 'slug': info_a['slug']},
+        'tool_b': {'tool_id': info_b['id'], 'name': info_b['name'], 'slug': info_b['slug']},
+        'categories': detail['categories'],
+        'recent_matchups': detail['recent_matchups'],
+        'total_matchups': detail['total_matchups'],
+        'cached': False,
+        'cache_age_seconds': 0,
+    }
+
+    db._leaderboard_cache.set(cache_key, response_data)
+    return jsonify(response_data)
+
+
+@app.route("/dashboard/history")
+@premium_required
+def dashboard_history():
+    """Personal Voting History page (premium only)"""
+    return render_template("dashboard_history.html")
+
+
+@app.route("/api/users/me/vote-stats")
+@premium_required
+def api_user_vote_stats():
+    """API: Get personal vote stats for the current user (premium only)"""
+    user = get_current_user()
+    stats = db.get_user_vote_stats(user['id'])
+    if stats is None:
+        return jsonify({'success': True, 'empty': True})
+    return jsonify(stats)
+
+
+@app.route("/api/users/me/votes")
+@premium_required
+def api_user_vote_history():
+    """API: Get paginated personal vote history (premium only)"""
+    user = get_current_user()
+    page = request.args.get('page', 1, type=int)
+    limit = min(request.args.get('limit', 20, type=int), 50)
+    tool_slug = request.args.get('tool')
+    category = request.args.get('category')
+    alignment = request.args.get('alignment')
+    sort = request.args.get('sort', 'newest')
+
+    if category and category not in db.VOTE_CATEGORIES:
+        return jsonify({'error': {
+            'code': 'INVALID_CATEGORY',
+            'message': f'Invalid category. Must be one of: {", ".join(db.VOTE_CATEGORIES)}',
+            'details': {}
+        }}), 400
+
+    if alignment and alignment not in ('majority', 'minority'):
+        return jsonify({'error': {
+            'code': 'INVALID_ALIGNMENT',
+            'message': 'Alignment must be "majority" or "minority".',
+            'details': {}
+        }}), 400
+
+    if sort not in ('newest', 'oldest'):
+        return jsonify({'error': {
+            'code': 'INVALID_SORT',
+            'message': 'Sort must be "newest" or "oldest".',
+            'details': {}
+        }}), 400
+
+    result = db.get_user_vote_history(
+        user['id'], page=page, limit=limit,
+        tool_slug=tool_slug, category=category,
+        alignment=alignment, sort=sort
+    )
+    if result is None:
+        return jsonify({'success': False, 'error': 'Failed to load vote history'}), 500
+    return jsonify(result)
+
+
+@app.route("/dashboard/tools/<slug>")
+def dashboard_tool_detail(slug):
+    """Placeholder for tool detail page (Phase 3)"""
+    tool = db.get_tool_by_slug(slug)
+    if not tool:
+        abort(404)
+    return render_template("dashboard.html", placeholder_tool=tool)
+
+
+# ============== Compare & Vote Routes ==============
+
+@app.route("/compare")
+def compare_page():
+    """Matchup listing page — browse active matchups"""
+    page = request.args.get('page', 1, type=int)
+    matchups, total = db.get_active_matchups(page=page, per_page=12)
+    total_pages = (total + 11) // 12
+    return render_template(
+        "compare.html",
+        matchups=matchups,
+        page=page,
+        total_pages=total_pages,
+        total=total
+    )
+
+
+@app.route("/compare/<int:matchup_id>")
+def view_matchup(matchup_id):
+    """Compare view — blind side-by-side post comparison with voting"""
+    matchup = db.get_matchup(matchup_id)
+    if not matchup or matchup['status'] != 'active':
+        abort(404)
+
+    user = get_current_user()
+    user_id = user['id'] if user else 0
+    is_premium = db.is_user_premium(user_id) if user else False
+
+    # Determine left/right position assignment
+    position_a_is_left = ((matchup['position_seed'] + user_id) % 2 == 0)
+
+    # Assign posts to left/right based on position
+    if position_a_is_left:
+        left_post = {
+            'id': matchup['post_a_id'], 'title': matchup['title_a'],
+            'content': matchup['content_a'], 'category': matchup['category_a'],
+            'side': 'a'
+        }
+        right_post = {
+            'id': matchup['post_b_id'], 'title': matchup['title_b'],
+            'content': matchup['content_b'], 'category': matchup['category_b'],
+            'side': 'b'
+        }
+    else:
+        left_post = {
+            'id': matchup['post_b_id'], 'title': matchup['title_b'],
+            'content': matchup['content_b'], 'category': matchup['category_b'],
+            'side': 'b'
+        }
+        right_post = {
+            'id': matchup['post_a_id'], 'title': matchup['title_a'],
+            'content': matchup['content_a'], 'category': matchup['category_a'],
+            'side': 'a'
+        }
+
+    # Calculate content metrics
+    left_post['metrics'] = calculate_content_metrics(left_post['content'] or '')
+    right_post['metrics'] = calculate_content_metrics(right_post['content'] or '')
+
+    # Get user's existing votes and determine view state
+    user_votes = []
+    has_voted = False
+    votes_locked = False
+    earliest_vote_time = None
+    if user:
+        user_votes = db.get_user_votes_for_matchup(user_id, matchup_id)
+        has_voted = len(user_votes) > 0
+        if has_voted:
+            votes_locked = user_votes[0]['locked']
+            earliest_vote_time = min(v['voted_at'] for v in user_votes)
+
+    # Build results data (only if user has voted AND is premium)
+    results = None
+    if has_voted and is_premium:
+        vote_counts = db.get_matchup_vote_counts(matchup_id)
+        results = {}
+        for cat in db.VOTE_CATEGORIES:
+            cat_counts = vote_counts.get(cat, {})
+            tool_a_count = cat_counts.get(matchup['tool_a'], 0)
+            tool_b_count = cat_counts.get(matchup['tool_b'], 0)
+            cat_total = tool_a_count + tool_b_count
+            results[cat] = {
+                'tool_a_votes': tool_a_count,
+                'tool_b_votes': tool_b_count,
+                'tool_a_pct': round(tool_a_count / cat_total * 100) if cat_total > 0 else 0,
+                'tool_b_pct': round(tool_b_count / cat_total * 100) if cat_total > 0 else 0,
+                'total': cat_total
+            }
+
+    total_vote_count = db.get_matchup_total_votes(matchup_id)
+
+    # Map user_votes to left/right for template
+    user_vote_map = {}
+    for v in user_votes:
+        if v['winner_tool'] == matchup['tool_a']:
+            winner_side = 'left' if position_a_is_left else 'right'
+        else:
+            winner_side = 'right' if position_a_is_left else 'left'
+        user_vote_map[v['category']] = winner_side
+
+    return render_template(
+        "comparison.html",
+        matchup=matchup,
+        left_post=left_post,
+        right_post=right_post,
+        position_a_is_left=position_a_is_left,
+        is_premium=is_premium,
+        has_voted=has_voted,
+        votes_locked=votes_locked,
+        user_vote_map=user_vote_map,
+        results=results,
+        total_vote_count=total_vote_count,
+        earliest_vote_time=earliest_vote_time.isoformat() if earliest_vote_time else None,
+        vote_lock_minutes=db.VOTE_LOCK_MINUTES,
+        vote_categories=db.VOTE_CATEGORIES
+    )
+
+
+def _format_vote_results(matchup, vote_counts):
+    """Format vote counts into the standard results dict for API responses."""
+    results = {}
+    for cat in db.VOTE_CATEGORIES:
+        cat_counts = vote_counts.get(cat, {})
+        tool_a_count = cat_counts.get(matchup['tool_a'], 0)
+        tool_b_count = cat_counts.get(matchup['tool_b'], 0)
+        cat_total = tool_a_count + tool_b_count
+        results[cat] = {
+            'tool_a_name': matchup['tool_a_name'],
+            'tool_b_name': matchup['tool_b_name'],
+            'tool_a_votes': tool_a_count,
+            'tool_b_votes': tool_b_count,
+            'tool_a_pct': round(tool_a_count / cat_total * 100) if cat_total > 0 else 0,
+            'tool_b_pct': round(tool_b_count / cat_total * 100) if cat_total > 0 else 0,
+        }
+    return results
+
+
+def _map_votes_left_right(data_votes, matchup, position_a_is_left):
+    """Map left/right winner sides to tool IDs. Returns (mapped_votes, error_response)."""
+    mapped = []
+    for v in data_votes:
+        category = v.get('category')
+        winner_side = v.get('winner')
+        if winner_side not in ('left', 'right'):
+            return None, (jsonify({'error': {
+                'code': 'INVALID_WINNER',
+                'message': f'Invalid winner side for {category}. Must be "left" or "right".',
+                'details': {'category': category}
+            }}), 400)
+        if winner_side == 'left':
+            winner_tool = matchup['tool_a'] if position_a_is_left else matchup['tool_b']
+        else:
+            winner_tool = matchup['tool_b'] if position_a_is_left else matchup['tool_a']
+        mapped.append({'category': category, 'winner_tool': winner_tool})
+    return mapped, None
+
+
+@app.route("/api/matchups/<int:matchup_id>/votes", methods=["POST"])
+@premium_required
+@limiter.limit("30 per minute")
+def api_batch_vote_matchup(matchup_id):
+    """API: Submit a batch of votes on a matchup (atomic)."""
+    user = get_current_user()
+    data = request.get_json()
+    if not data or 'votes' not in data or not isinstance(data['votes'], list):
+        return jsonify({'error': {
+            'code': 'INVALID_PAYLOAD',
+            'message': 'Request must contain a votes array.',
+            'details': {}
+        }}), 400
+
+    matchup = db.get_matchup(matchup_id)
+    if not matchup:
+        return jsonify({'error': {
+            'code': 'MATCHUP_NOT_FOUND',
+            'message': 'Matchup not found.',
+            'details': {}
+        }}), 404
+
+    position_a_is_left = ((matchup['position_seed'] + user['id']) % 2 == 0)
+    mapped_votes, err = _map_votes_left_right(data['votes'], matchup, position_a_is_left)
+    if err:
+        return err
+
+    meta = {
+        'ip': request.remote_addr,
+        'read_time_seconds': data.get('read_time_seconds'),
+        'batch_size': len(mapped_votes)
+    }
+
+    result = db.batch_submit_votes(
+        user['id'], matchup_id, mapped_votes, position_a_is_left, meta)
+
+    if not result['success']:
+        return jsonify({'error': result['error']}), result['status_code']
+
+    try:
+        db.recompute_user_vote_stats(user['id'])
+    except Exception:
+        logger.warning(f"Failed to recompute user stats for user {user['id']}")
+
+    vote_counts = db.get_matchup_vote_counts(matchup_id)
+    results = _format_vote_results(matchup, vote_counts)
+
+    return jsonify({
+        'success': True,
+        'vote_count': len(result['vote_ids']),
+        'edit_window_expires_at': result.get('edit_window_expires_at'),
+        'results': results,
+        'tool_a_name': matchup['tool_a_name'],
+        'tool_b_name': matchup['tool_b_name'],
+        'tool_a_icon': matchup['tool_a_icon'],
+        'tool_b_icon': matchup['tool_b_icon'],
+        'position_a_is_left': position_a_is_left
+    }), result['status_code']
+
+
+@app.route("/api/matchups/<int:matchup_id>/votes", methods=["PATCH"])
+@premium_required
+@limiter.limit("30 per minute")
+def api_batch_edit_votes(matchup_id):
+    """API: Edit existing votes within the lock window (atomic)."""
+    user = get_current_user()
+    data = request.get_json()
+    if not data or 'votes' not in data or not isinstance(data['votes'], list):
+        return jsonify({'error': {
+            'code': 'INVALID_PAYLOAD',
+            'message': 'Request must contain a votes array.',
+            'details': {}
+        }}), 400
+
+    matchup = db.get_matchup(matchup_id)
+    if not matchup:
+        return jsonify({'error': {
+            'code': 'MATCHUP_NOT_FOUND',
+            'message': 'Matchup not found.',
+            'details': {}
+        }}), 404
+
+    position_a_is_left = ((matchup['position_seed'] + user['id']) % 2 == 0)
+    mapped_votes, err = _map_votes_left_right(data['votes'], matchup, position_a_is_left)
+    if err:
+        return err
+
+    meta = {
+        'ip': request.remote_addr,
+        'read_time_seconds': data.get('read_time_seconds'),
+        'batch_size': len(mapped_votes)
+    }
+
+    result = db.batch_edit_votes(
+        user['id'], matchup_id, mapped_votes, position_a_is_left, meta)
+
+    if not result['success']:
+        return jsonify({'error': result['error']}), result['status_code']
+
+    try:
+        db.recompute_user_vote_stats(user['id'])
+    except Exception:
+        logger.warning(f"Failed to recompute user stats for user {user['id']}")
+
+    vote_counts = db.get_matchup_vote_counts(matchup_id)
+    results = _format_vote_results(matchup, vote_counts)
+
+    return jsonify({
+        'success': True,
+        'vote_count': len(result['vote_ids']),
+        'edit_window_expires_at': result.get('edit_window_expires_at'),
+        'results': results,
+        'tool_a_name': matchup['tool_a_name'],
+        'tool_b_name': matchup['tool_b_name'],
+        'tool_a_icon': matchup['tool_a_icon'],
+        'tool_b_icon': matchup['tool_b_icon'],
+        'position_a_is_left': position_a_is_left
+    }), 200
+
+
+@app.route("/api/matchups/<int:matchup_id>/results")
+@premium_required
+def api_matchup_results(matchup_id):
+    """API: Get matchup results (only if user has voted)"""
+    user = get_current_user()
+    matchup = db.get_matchup(matchup_id)
+    if not matchup:
+        return jsonify({'success': False, 'error': 'Matchup not found'}), 404
+
+    user_votes = db.get_user_votes_for_matchup(user['id'], matchup_id)
+    if not user_votes:
+        return jsonify({'success': False, 'error': 'You must vote before viewing results'}), 403
+
+    vote_counts = db.get_matchup_vote_counts(matchup_id)
+    results = _format_vote_results(matchup, vote_counts)
+
+    return jsonify({
+        'success': True,
+        'results': results,
+        'tool_a_name': matchup['tool_a_name'],
+        'tool_b_name': matchup['tool_b_name'],
+        'tool_a_icon': matchup['tool_a_icon'],
+        'tool_b_icon': matchup['tool_b_icon'],
+        'total_votes': db.get_matchup_total_votes(matchup_id)
+    })
 
 
 # ============== API Routes ==============

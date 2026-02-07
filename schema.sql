@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS AITool (
     slug VARCHAR(100) UNIQUE NOT NULL,
     description TEXT,
     icon_url VARCHAR(500),
-    api_provider VARCHAR(50)
+    api_provider VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'active',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============== Users Table ==============
@@ -67,28 +69,70 @@ CREATE TABLE IF NOT EXISTS Bookmark (
     UNIQUE(user_id, post_id)
 );
 
--- ============== AI Comparison Tables ==============
-CREATE TABLE IF NOT EXISTS Comparison (
-    comparison_id SERIAL PRIMARY KEY,
-    topic VARCHAR(500) NOT NULL,
+-- ============== Prompts Table ==============
+CREATE TABLE IF NOT EXISTS prompts (
+    prompt_id SERIAL PRIMARY KEY,
+    title VARCHAR(500) NOT NULL,
+    content TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS ComparisonPost (
-    id SERIAL PRIMARY KEY,
-    comparison_id INTEGER NOT NULL REFERENCES Comparison(comparison_id) ON DELETE CASCADE,
-    post_id INTEGER NOT NULL REFERENCES Post(postid) ON DELETE CASCADE,
-    UNIQUE(comparison_id, post_id)
+-- ============== Matchups Table ==============
+CREATE TABLE IF NOT EXISTS matchups (
+    matchup_id SERIAL PRIMARY KEY,
+    post_a_id INTEGER NOT NULL REFERENCES Post(postid),
+    post_b_id INTEGER NOT NULL REFERENCES Post(postid),
+    tool_a INTEGER NOT NULL REFERENCES AITool(tool_id),
+    tool_b INTEGER NOT NULL REFERENCES AITool(tool_id),
+    prompt_id INTEGER REFERENCES prompts(prompt_id),
+    position_seed INTEGER,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CHECK (post_a_id != post_b_id),
+    CHECK (tool_a != tool_b),
+    CHECK (tool_a < tool_b),
+    UNIQUE (post_a_id, post_b_id)
 );
 
-CREATE TABLE IF NOT EXISTS Vote (
+CREATE INDEX IF NOT EXISTS idx_matchups_tool_pair ON matchups(tool_a, tool_b);
+CREATE INDEX IF NOT EXISTS idx_matchups_status ON matchups(status);
+CREATE INDEX IF NOT EXISTS idx_matchups_prompt_id ON matchups(prompt_id);
+
+-- ============== Votes Table ==============
+CREATE TABLE IF NOT EXISTS votes (
     vote_id SERIAL PRIMARY KEY,
-    comparison_id INTEGER NOT NULL REFERENCES Comparison(comparison_id) ON DELETE CASCADE,
-    user_id INTEGER REFERENCES Users(user_id) ON DELETE SET NULL,
-    post_id INTEGER NOT NULL REFERENCES Post(postid) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(comparison_id, user_id)
+    user_id INTEGER NOT NULL REFERENCES Users(user_id),
+    matchup_id INTEGER NOT NULL REFERENCES matchups(matchup_id) ON DELETE CASCADE,
+    category VARCHAR(30) NOT NULL,
+    winner_tool INTEGER NOT NULL REFERENCES AITool(tool_id),
+    voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    locked BOOLEAN DEFAULT FALSE,
+    position_a_was_left BOOLEAN,
+    UNIQUE (user_id, matchup_id, category)
 );
+
+CREATE INDEX IF NOT EXISTS idx_votes_user_matchup ON votes(user_id, matchup_id);
+CREATE INDEX IF NOT EXISTS idx_votes_matchup_category ON votes(matchup_id, category);
+CREATE INDEX IF NOT EXISTS idx_votes_winner_category ON votes(winner_tool, category);
+CREATE INDEX IF NOT EXISTS idx_votes_voted_at ON votes(voted_at);
+
+-- ============== Vote Events Audit Table ==============
+CREATE TABLE IF NOT EXISTS vote_events (
+    event_id SERIAL PRIMARY KEY,
+    event_type VARCHAR(20) NOT NULL,
+    user_id INTEGER REFERENCES Users(user_id),
+    matchup_id INTEGER REFERENCES matchups(matchup_id),
+    categories TEXT,
+    error_code VARCHAR(40),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_vote_events_user_created
+    ON vote_events(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_vote_events_error_created
+    ON vote_events(error_code, created_at);
 
 -- ============== In-App Notifications Table ==============
 CREATE TABLE IF NOT EXISTS Notification (

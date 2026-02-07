@@ -1,0 +1,986 @@
+{% extends "base.html" %}
+
+{% block title %}Compare & Vote Dashboard - AI Blog{% endblock %}
+{% block description %}Community insights on AI tool performance — see win rates, trends, and rankings.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .leaderboard-table th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; }
+  .leaderboard-row { cursor: pointer; transition: background-color 0.15s; }
+  .leaderboard-row:hover { background-color: rgba(var(--bs-primary-rgb), 0.05); }
+  .leaderboard-row.rank-change { transition: transform 0.3s ease; }
+  .win-rate-bar { height: 8px; border-radius: 4px; background: #e9ecef; overflow: hidden; min-width: 80px; }
+  .win-rate-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--bs-primary), #6f42c1); transition: width 0.5s ease; }
+  .rank-badge { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 700; font-size: 0.85rem; }
+  .rank-1 { background: linear-gradient(135deg, #ffd700, #ffb300); color: #5d4600; }
+  .rank-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #3a3a3a; }
+  .rank-3 { background: linear-gradient(135deg, #cd7f32, #b5651d); color: #fff; }
+  .rank-default { background: #e9ecef; color: #495057; }
+  .trend-up { color: #198754; }
+  .trend-down { color: #dc3545; }
+  .trend-stable { color: #6c757d; }
+  .confidence-high { background-color: #d1e7dd; color: #0f5132; }
+  .confidence-medium { background-color: #fff3cd; color: #664d03; }
+  .confidence-low { background-color: #f8d7da; color: #842029; }
+  .skeleton-row { animation: skeleton-pulse 1.5s ease-in-out infinite; }
+  .skeleton-bar { height: 16px; border-radius: 4px; background: #e9ecef; }
+  @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .category-breakdown { display: none; }
+  .leaderboard-row.expanded .category-breakdown { display: table-row; }
+  .breakdown-bar { height: 6px; border-radius: 3px; background: #e9ecef; overflow: hidden; }
+  .breakdown-fill { height: 100%; border-radius: 3px; background: var(--bs-primary); }
+  .blurred-leaderboard { filter: blur(5px); user-select: none; pointer-events: none; }
+  .dashboard-gate-overlay {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 10; pointer-events: auto;
+  }
+  .leaderboard-container { position: relative; }
+  /* Mobile card layout */
+  @media (max-width: 767.98px) {
+    .leaderboard-table-wrapper { display: none; }
+    .leaderboard-cards { display: block !important; }
+  }
+  @media (min-width: 768px) {
+    .leaderboard-cards { display: none !important; }
+  }
+  .tool-card { border-left: 4px solid var(--bs-primary); }
+  .tool-card .win-rate-bar { min-width: 100%; }
+  /* Hide confidence on tablet */
+  @media (max-width: 1023.98px) and (min-width: 768px) {
+    .col-confidence { display: none; }
+  }
+  /* H2H Matrix styles */
+  .h2h-table { border-collapse: separate; border-spacing: 2px; }
+  .h2h-table th { font-size: 0.75rem; font-weight: 600; text-align: center; padding: 6px 8px; white-space: nowrap; }
+  .h2h-cell { cursor: pointer; font-weight: 600; font-size: 0.85rem; text-align: center; padding: 10px 8px; min-width: 65px; border-radius: 4px; transition: all 0.5s ease; position: relative; }
+  .h2h-cell-strong-lose { background: #FEE2E2; color: #DC2626; }
+  .h2h-cell-slight-lose { background: #FEF3C7; color: #D97706; }
+  .h2h-cell-even { background: #F3F4F6; color: #374151; }
+  .h2h-cell-slight-win { background: #D1FAE5; color: #059669; }
+  .h2h-cell-strong-win { background: #DCFCE7; color: #16A34A; }
+  .h2h-cell-diagonal { background: #374151; color: #9ca3af; border-radius: 4px; cursor: default; }
+  .h2h-cell-pending { background: repeating-linear-gradient(45deg, #f1f1f1, #f1f1f1 5px, #e5e5e5 5px, #e5e5e5 10px); color: #9ca3af; cursor: default; font-weight: 400; font-size: 0.7rem; }
+  .h2h-cell-nodata { background: #F9FAFB; color: #9ca3af; }
+  .h2h-cell.low-confidence { opacity: 0.6; }
+  .h2h-table tr.h2h-row-highlight td:not(.h2h-cell-diagonal) { box-shadow: inset 0 0 0 2px rgba(var(--bs-primary-rgb), 0.2); }
+  .h2h-table td.h2h-col-highlight:not(.h2h-cell-diagonal) { box-shadow: inset 0 0 0 2px rgba(var(--bs-primary-rgb), 0.2); }
+  .h2h-legend { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #6c757d; }
+  .h2h-legend-swatch { width: 14px; height: 14px; border-radius: 2px; display: inline-block; }
+  /* Slide-out panel */
+  .h2h-panel { position: fixed; top: 0; right: -500px; width: 480px; max-width: 95vw; height: 100vh; background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,0.15); z-index: 1050; transition: right 0.3s ease; overflow-y: auto; }
+  .h2h-panel.open { right: 0; }
+  .h2h-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 1040; display: none; }
+  .h2h-overlay.open { display: block; }
+  .h2h-stacked-bar { height: 24px; border-radius: 4px; overflow: hidden; display: flex; }
+  .h2h-stacked-bar .bar-a { background: var(--bs-primary); transition: width 0.5s ease; }
+  .h2h-stacked-bar .bar-b { background: #6c757d; transition: width 0.5s ease; }
+  /* Mobile pair selector */
+  .h2h-mobile-selector { display: none; }
+  @media (max-width: 767.98px) {
+    .h2h-grid-wrapper { display: none !important; }
+    .h2h-mobile-selector { display: block !important; }
+  }
+  @media (min-width: 768px) {
+    .h2h-mobile-selector { display: none !important; }
+  }
+  /* Matrix skeleton */
+  .h2h-skeleton { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .h2h-skeleton-cell { height: 48px; border-radius: 4px; background: #e9ecef; animation: skeleton-pulse 1.5s ease-in-out infinite; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-4">
+  <div class="container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+      <div>
+        <h1 class="h2 fw-bold mb-1">Compare & Vote Dashboard</h1>
+        <p class="text-muted mb-0">Community insights on AI tool performance</p>
+      </div>
+      <div class="text-end">
+        <small class="text-muted" id="computed-at-label">Loading...</small>
+      </div>
+    </div>
+
+    <!-- Dashboard Page Tabs -->
+    <ul class="nav nav-tabs mb-4">
+      <li class="nav-item">
+        <a class="nav-link active" href="{{ url_for('dashboard') }}">
+          <i class="bi bi-bar-chart me-1"></i>Overview
+        </a>
+      </li>
+      {% if is_premium %}
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('dashboard_history') }}">
+          <i class="bi bi-clock-history me-1"></i>My Votes
+        </a>
+      </li>
+      {% endif %}
+      <li class="nav-item">
+        <a class="nav-link disabled" href="#">
+          <i class="bi bi-graph-up me-1"></i>Trends
+          <span class="badge bg-secondary ms-1" style="font-size:0.6rem;">Soon</span>
+        </a>
+      </li>
+    </ul>
+
+    <!-- Category Tabs -->
+    <ul class="nav nav-pills mb-4" id="category-tabs">
+      <li class="nav-item">
+        <button class="nav-link active" data-category="overall">Overall</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-category="writing_quality">Writing Quality</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-category="accuracy">Accuracy</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-category="creativity">Creativity</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-category="usefulness">Usefulness</button>
+      </li>
+    </ul>
+
+    <div class="leaderboard-container">
+      {% if not is_premium %}
+      <!-- Free User Gate Overlay -->
+      <div class="dashboard-gate-overlay text-center" id="gate-overlay">
+        <div class="card shadow-lg border-0 p-4" style="max-width: 420px;">
+          <div class="mb-3">
+            <i class="bi bi-bar-chart-fill text-primary" style="font-size: 2.5rem;"></i>
+          </div>
+          <h4 class="fw-bold">Unlock the Full Dashboard</h4>
+          <p class="text-muted">See win rates, trends, and detailed comparisons across all AI tools.</p>
+          <button class="btn btn-primary btn-lg w-100" onclick="showUpgradeModal('dashboard_cta')">
+            <i class="bi bi-star-fill me-1"></i>Upgrade to Premium
+          </button>
+          <a href="{{ url_for('pricing') }}" class="text-muted small mt-2 d-inline-block">View plans</a>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Skeleton Loader -->
+      <div id="skeleton-loader">
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead><tr>
+              <th style="width:60px"></th><th></th><th style="width:200px"></th>
+              <th style="width:80px"></th><th style="width:100px"></th><th style="width:80px"></th>
+            </tr></thead>
+            <tbody>
+              {% for i in range(5) %}
+              <tr class="skeleton-row">
+                <td><div class="skeleton-bar" style="width:32px;height:32px;border-radius:50%;"></div></td>
+                <td><div class="skeleton-bar" style="width:120px;"></div></td>
+                <td><div class="skeleton-bar"></div></td>
+                <td><div class="skeleton-bar" style="width:50px;"></div></td>
+                <td><div class="skeleton-bar" style="width:70px;"></div></td>
+                <td><div class="skeleton-bar" style="width:40px;"></div></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" style="display:none;" class="text-center py-5">
+        <i class="bi bi-exclamation-triangle text-warning" style="font-size: 2rem;"></i>
+        <p class="mt-2 text-muted">Failed to load leaderboard data.</p>
+        <button class="btn btn-outline-primary btn-sm" onclick="fetchLeaderboard()">
+          <i class="bi bi-arrow-clockwise me-1"></i>Retry
+        </button>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" style="display:none;" class="text-center py-5">
+        <i class="bi bi-trophy text-muted" style="font-size: 3rem;"></i>
+        <h5 class="mt-3">Not enough votes yet</h5>
+        <p class="text-muted">Be one of the first to compare AI tools!</p>
+        <a href="{{ url_for('compare_page') }}" class="btn btn-primary">
+          <i class="bi bi-arrow-left-right me-1"></i>Start Comparing
+        </a>
+      </div>
+
+      <!-- Desktop Table -->
+      <div id="leaderboard-content" style="display:none;">
+        <div class="table-responsive leaderboard-table-wrapper">
+          <table class="table align-middle mb-0" id="leaderboard-table">
+            <thead>
+              <tr>
+                <th class="leaderboard-table" style="width:60px;">Rank</th>
+                <th class="leaderboard-table">Tool</th>
+                <th class="leaderboard-table" style="width:200px;">Win Rate</th>
+                <th class="leaderboard-table text-end" style="width:80px;">Votes</th>
+                <th class="leaderboard-table" style="width:120px;">7d Trend</th>
+                <th class="leaderboard-table col-confidence" style="width:80px;">Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Cards -->
+        <div class="leaderboard-cards" id="leaderboard-cards"></div>
+
+        <!-- Below Threshold -->
+        <div id="below-threshold" style="display:none;" class="mt-4">
+          <div class="card bg-light border-0">
+            <div class="card-body">
+              <h6 class="text-muted mb-3"><i class="bi bi-hourglass-split me-1"></i>Tools Collecting Data</h6>
+              <div id="below-threshold-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Head-to-Head Matrix Section -->
+    <div class="mt-5" id="h2h-section">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h3 class="h4 fw-bold mb-1"><i class="bi bi-grid-3x3 me-2"></i>Head-to-Head Matchups</h3>
+          <p class="text-muted mb-0 small" id="h2h-subtitle">Win rate of row tool vs. column tool &mdash; <span id="h2h-category-label">Overall</span></p>
+        </div>
+        <div class="h2h-legend d-none d-md-flex">
+          <span class="h2h-legend-swatch" style="background:#FEE2E2;"></span> Loses
+          <span class="h2h-legend-swatch ms-2" style="background:#F3F4F6;"></span> Even
+          <span class="h2h-legend-swatch ms-2" style="background:#DCFCE7;"></span> Wins
+        </div>
+      </div>
+
+      <!-- Matrix Skeleton -->
+      <div id="h2h-skeleton">
+        <div class="h2h-skeleton">
+          {% for i in range(36) %}
+          <div class="h2h-skeleton-cell"></div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Desktop Matrix Grid -->
+      <div class="h2h-grid-wrapper" id="h2h-grid-wrapper" style="display:none;">
+        <div class="table-responsive">
+          <table class="h2h-table" id="h2h-table">
+            <thead id="h2h-thead"></thead>
+            <tbody id="h2h-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Mobile Pair Selector -->
+      <div class="h2h-mobile-selector" id="h2h-mobile-selector">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small text-muted mb-1">Tool A</label>
+            <select class="form-select form-select-sm" id="h2h-select-a"></select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small text-muted mb-1">Tool B</label>
+            <select class="form-select form-select-sm" id="h2h-select-b"></select>
+          </div>
+        </div>
+        <div id="h2h-mobile-detail"></div>
+      </div>
+
+      <!-- Matrix Error State -->
+      <div id="h2h-error" style="display:none;" class="text-center py-4">
+        <i class="bi bi-exclamation-triangle text-warning"></i>
+        <p class="text-muted small mt-1 mb-0">Failed to load matrix data.</p>
+      </div>
+    </div>
+
+    <!-- Slide-out Pair Panel -->
+    <div class="h2h-overlay" id="h2h-overlay"></div>
+    <div class="h2h-panel" id="h2h-panel">
+      <div class="p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h5 class="fw-bold mb-0" id="h2h-panel-title"></h5>
+          <button class="btn btn-sm btn-outline-secondary" onclick="closePairPanel()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+        <div id="h2h-panel-content"></div>
+      </div>
+    </div>
+
+    {% if is_premium %}
+    <!-- Your Voting Stats Quick Card -->
+    <div class="mt-5" id="user-stats-section">
+      <h3 class="h4 fw-bold mb-3"><i class="bi bi-person-badge me-2"></i>Your Voting Stats</h3>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body" id="user-stats-card">
+          <div class="d-flex justify-content-center py-3">
+            <div class="spinner-border spinner-border-sm text-muted" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Trend Charts Placeholder -->
+    <div class="row mt-5 g-4">
+      <div class="col-12">
+        <div class="card bg-light border-0 text-center py-5">
+          <div class="card-body">
+            <i class="bi bi-graph-up text-muted" style="font-size: 2rem;"></i>
+            <p class="text-muted mt-2 mb-0">Trend Charts &mdash; Coming Soon</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if not is_premium %}
+{% include "components/_upgrade_modal.html" %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  var IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
+  var currentCategory = 'overall';
+  var currentData = null;
+  var pollTimer = null;
+  var skeletonTimeout = null;
+
+  // ===== Category Tabs =====
+  document.querySelectorAll('#category-tabs .nav-link').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelector('#category-tabs .nav-link.active').classList.remove('active');
+      btn.classList.add('active');
+      currentCategory = btn.dataset.category;
+      showSkeleton();
+      showMatrixSkeleton();
+      fetchAll();
+    });
+  });
+
+  function showSkeleton() {
+    document.getElementById('skeleton-loader').style.display = '';
+    document.getElementById('leaderboard-content').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
+    document.getElementById('empty-state').style.display = 'none';
+  }
+
+  function showError() {
+    document.getElementById('skeleton-loader').style.display = 'none';
+    document.getElementById('leaderboard-content').style.display = 'none';
+    document.getElementById('error-state').style.display = '';
+    document.getElementById('empty-state').style.display = 'none';
+  }
+
+  function showEmpty() {
+    document.getElementById('skeleton-loader').style.display = 'none';
+    document.getElementById('leaderboard-content').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
+    document.getElementById('empty-state').style.display = '';
+  }
+
+  function showContent() {
+    document.getElementById('skeleton-loader').style.display = 'none';
+    document.getElementById('leaderboard-content').style.display = '';
+    document.getElementById('error-state').style.display = 'none';
+    document.getElementById('empty-state').style.display = 'none';
+  }
+
+  // ===== Fetch Leaderboard =====
+  window.fetchLeaderboard = function() {
+    clearTimeout(skeletonTimeout);
+    skeletonTimeout = setTimeout(showError, 8000);
+
+    var url = IS_PREMIUM
+      ? '/api/dashboard/leaderboard?category=' + currentCategory + '&min_votes=0'
+      : '/api/dashboard/leaderboard/teaser';
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        clearTimeout(skeletonTimeout);
+        if (IS_PREMIUM) {
+          renderLeaderboard(data);
+        } else {
+          renderTeaser(data);
+        }
+      })
+      .catch(function() {
+        clearTimeout(skeletonTimeout);
+        showError();
+      });
+  };
+
+  // ===== Render Full Leaderboard (Premium) =====
+  function renderLeaderboard(data) {
+    if (!data.success || !data.leaderboard) { showError(); return; }
+    if (data.leaderboard.length === 0 && data.below_threshold.length === 0) { showEmpty(); return; }
+
+    // Update timestamp
+    if (data.computed_at) {
+      var d = new Date(data.computed_at);
+      document.getElementById('computed-at-label').textContent = 'Data as of ' + d.toLocaleString();
+    }
+
+    var tbody = document.getElementById('leaderboard-body');
+    var cards = document.getElementById('leaderboard-cards');
+    var html = '';
+    var cardHtml = '';
+
+    data.leaderboard.forEach(function(tool) {
+      var rankClass = tool.rank <= 3 ? 'rank-' + tool.rank : 'rank-default';
+      var trendIcon = tool.trend === 'up' ? 'bi-arrow-up-short' :
+                      tool.trend === 'down' ? 'bi-arrow-down-short' : 'bi-dash';
+      var trendClass = 'trend-' + tool.trend;
+      var confClass = 'confidence-' + tool.confidence;
+      var wrPct = Math.round(tool.win_rate * 100);
+
+      // Desktop row
+      html += '<tr class="leaderboard-row" data-slug="' + tool.tool_slug + '" data-tool-id="' + tool.tool_id + '">';
+      html += '<td><span class="rank-badge ' + rankClass + '">' + tool.rank + '</span></td>';
+      html += '<td class="fw-semibold">' + escapeHtml(tool.tool_name) + '</td>';
+      html += '<td><div class="d-flex align-items-center gap-2">';
+      html += '<span class="fw-bold" style="min-width:50px;">' + tool.win_rate_display + '</span>';
+      html += '<div class="win-rate-bar flex-grow-1"><div class="win-rate-fill" style="width:' + wrPct + '%;"></div></div>';
+      html += '</div></td>';
+      html += '<td class="text-end text-muted">' + tool.total_votes.toLocaleString() + '</td>';
+      html += '<td><span class="' + trendClass + '">';
+      html += '<i class="bi ' + trendIcon + '"></i>';
+      if (tool.trend_delta) html += ' ' + tool.trend_delta;
+      html += '</span></td>';
+      html += '<td class="col-confidence"><span class="badge rounded-pill ' + confClass + '">' + capitalize(tool.confidence) + '</span></td>';
+      html += '</tr>';
+
+      // Breakdown row (hidden, shown on hover/click)
+      if (tool.category_breakdown) {
+        html += '<tr class="category-breakdown-row" data-parent="' + tool.tool_id + '" style="display:none;">';
+        html += '<td></td><td colspan="5"><div class="row g-2 py-2">';
+        var cats = ['writing_quality', 'accuracy', 'creativity', 'usefulness', 'overall'];
+        var catLabels = {'writing_quality':'Writing','accuracy':'Accuracy','creativity':'Creativity','usefulness':'Usefulness','overall':'Overall'};
+        cats.forEach(function(cat) {
+          var bd = tool.category_breakdown[cat];
+          if (bd) {
+            var bWr = Math.round(bd.win_rate * 100);
+            html += '<div class="col"><small class="text-muted">' + catLabels[cat] + '</small>';
+            html += '<div class="breakdown-bar mt-1"><div class="breakdown-fill" style="width:' + bWr + '%;"></div></div>';
+            html += '<small>' + bWr + '%</small></div>';
+          }
+        });
+        html += '</div></td></tr>';
+      }
+
+      // Mobile card
+      cardHtml += '<div class="card tool-card mb-3" data-slug="' + tool.tool_slug + '">';
+      cardHtml += '<div class="card-body py-3">';
+      cardHtml += '<div class="d-flex justify-content-between align-items-center mb-2">';
+      cardHtml += '<div><span class="rank-badge ' + rankClass + ' me-2" style="width:28px;height:28px;font-size:0.8rem;">' + tool.rank + '</span>';
+      cardHtml += '<strong>' + escapeHtml(tool.tool_name) + '</strong></div>';
+      cardHtml += '<span class="' + trendClass + '"><i class="bi ' + trendIcon + '"></i>';
+      if (tool.trend_delta) cardHtml += ' ' + tool.trend_delta;
+      cardHtml += '</span></div>';
+      cardHtml += '<div class="d-flex align-items-center gap-2 mb-1">';
+      cardHtml += '<span class="fw-bold">' + tool.win_rate_display + '</span>';
+      cardHtml += '<div class="win-rate-bar flex-grow-1"><div class="win-rate-fill" style="width:' + wrPct + '%;"></div></div>';
+      cardHtml += '</div>';
+      cardHtml += '<div class="d-flex justify-content-between"><small class="text-muted">' + tool.total_votes.toLocaleString() + ' votes</small>';
+      cardHtml += '<span class="badge rounded-pill ' + confClass + '" style="font-size:0.7rem;">' + capitalize(tool.confidence) + '</span>';
+      cardHtml += '</div></div></div>';
+    });
+
+    tbody.innerHTML = html;
+    cards.innerHTML = cardHtml;
+    showContent();
+
+    // Below threshold
+    var btContainer = document.getElementById('below-threshold');
+    var btList = document.getElementById('below-threshold-list');
+    if (data.below_threshold && data.below_threshold.length > 0) {
+      var btHtml = '';
+      data.below_threshold.forEach(function(tool) {
+        var icon = tool.status === 'pending' ? 'bi-clock' : 'bi-bar-chart';
+        btHtml += '<div class="d-flex justify-content-between align-items-center py-1">';
+        btHtml += '<span><i class="bi ' + icon + ' text-muted me-2"></i>' + escapeHtml(tool.tool_name) + '</span>';
+        btHtml += '<small class="text-muted">' + tool.message + '</small>';
+        btHtml += '</div>';
+      });
+      btList.innerHTML = btHtml;
+      btContainer.style.display = '';
+    } else {
+      btContainer.style.display = 'none';
+    }
+
+    // Row interactions
+    tbody.querySelectorAll('.leaderboard-row').forEach(function(row) {
+      row.addEventListener('mouseenter', function() {
+        var breakdownRow = tbody.querySelector('.category-breakdown-row[data-parent="' + row.dataset.toolId + '"]');
+        if (breakdownRow) breakdownRow.style.display = '';
+      });
+      row.addEventListener('mouseleave', function() {
+        var breakdownRow = tbody.querySelector('.category-breakdown-row[data-parent="' + row.dataset.toolId + '"]');
+        if (breakdownRow) breakdownRow.style.display = 'none';
+      });
+      row.addEventListener('click', function() {
+        window.location.href = '/dashboard/tools/' + row.dataset.slug;
+      });
+    });
+
+    cards.querySelectorAll('.tool-card').forEach(function(card) {
+      card.addEventListener('click', function() {
+        window.location.href = '/dashboard/tools/' + card.dataset.slug;
+      });
+    });
+
+    currentData = data;
+  }
+
+  // ===== Render Teaser (Free) =====
+  function renderTeaser(data) {
+    if (!data.success) { showError(); return; }
+
+    var tbody = document.getElementById('leaderboard-body');
+    var cards = document.getElementById('leaderboard-cards');
+    var html = '';
+    var cardHtml = '';
+
+    // Render teaser rows (unblurred top rows)
+    data.teaser.forEach(function(tool, i) {
+      var rankClass = i === 0 ? 'rank-1' : 'rank-2';
+      html += '<tr class="leaderboard-row">';
+      html += '<td><span class="rank-badge ' + rankClass + '">' + (i + 1) + '</span></td>';
+      html += '<td class="fw-semibold">' + escapeHtml(tool.tool_name) + '</td>';
+      html += '<td><div class="d-flex align-items-center gap-2">';
+      html += '<span class="fw-bold" style="min-width:50px;">~' + tool.win_rate_rounded + '%</span>';
+      html += '<div class="win-rate-bar flex-grow-1"><div class="win-rate-fill" style="width:' + tool.win_rate_rounded + '%;"></div></div>';
+      html += '</div></td>';
+      html += '<td class="text-end text-muted">-</td>';
+      html += '<td><span class="text-muted">-</span></td>';
+      html += '<td class="col-confidence">-</td>';
+      html += '</tr>';
+
+      cardHtml += '<div class="card tool-card mb-3"><div class="card-body py-3">';
+      cardHtml += '<div class="d-flex align-items-center mb-2">';
+      cardHtml += '<span class="rank-badge ' + rankClass + ' me-2" style="width:28px;height:28px;font-size:0.8rem;">' + (i + 1) + '</span>';
+      cardHtml += '<strong>' + escapeHtml(tool.tool_name) + '</strong></div>';
+      cardHtml += '<div class="d-flex align-items-center gap-2">';
+      cardHtml += '<span class="fw-bold">~' + tool.win_rate_rounded + '%</span>';
+      cardHtml += '<div class="win-rate-bar flex-grow-1"><div class="win-rate-fill" style="width:' + tool.win_rate_rounded + '%;"></div></div>';
+      cardHtml += '</div></div></div>';
+    });
+
+    // Add blurred placeholder rows
+    for (var j = 0; j < 3; j++) {
+      html += '<tr class="leaderboard-row blurred-leaderboard">';
+      html += '<td><span class="rank-badge rank-default">' + (data.teaser.length + j + 1) + '</span></td>';
+      html += '<td class="fw-semibold">Tool Name</td>';
+      html += '<td><div class="d-flex align-items-center gap-2"><span class="fw-bold">50.0%</span>';
+      html += '<div class="win-rate-bar flex-grow-1"><div class="win-rate-fill" style="width:50%;"></div></div></div></td>';
+      html += '<td class="text-end text-muted">---</td>';
+      html += '<td><span class="text-muted">-</span></td>';
+      html += '<td class="col-confidence">-</td>';
+      html += '</tr>';
+    }
+
+    tbody.innerHTML = html;
+    cards.innerHTML = cardHtml;
+    showContent();
+    document.getElementById('computed-at-label').textContent = '';
+  }
+
+  // ===== Fetch All (Leaderboard + Matrix) =====
+  function fetchAll() {
+    if (IS_PREMIUM) {
+      Promise.all([
+        fetch('/api/dashboard/leaderboard?category=' + currentCategory + '&min_votes=0').then(function(r) { return r.json(); }),
+        fetch('/api/dashboard/matrix?category=' + currentCategory).then(function(r) { return r.json(); })
+      ]).then(function(results) {
+        clearTimeout(skeletonTimeout);
+        renderLeaderboard(results[0]);
+        renderMatrix(results[1]);
+      }).catch(function() {
+        clearTimeout(skeletonTimeout);
+        showError();
+        showMatrixError();
+      });
+    } else {
+      fetchLeaderboard();
+    }
+  }
+
+  // ===== Polling =====
+  function startPolling() {
+    if (!IS_PREMIUM) return;
+    pollTimer = setInterval(function() {
+      if (document.visibilityState === 'visible') {
+        fetchAll();
+      }
+    }, 60000);
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && IS_PREMIUM && !pollTimer) {
+      startPolling();
+    }
+  });
+
+  // ===== Matrix State =====
+  var matrixTools = [];
+  var matrixCells = [];
+
+  function showMatrixSkeleton() {
+    document.getElementById('h2h-skeleton').style.display = '';
+    document.getElementById('h2h-grid-wrapper').style.display = 'none';
+    document.getElementById('h2h-error').style.display = 'none';
+  }
+
+  function showMatrixError() {
+    document.getElementById('h2h-skeleton').style.display = 'none';
+    document.getElementById('h2h-grid-wrapper').style.display = 'none';
+    document.getElementById('h2h-error').style.display = '';
+  }
+
+  function showMatrixContent() {
+    document.getElementById('h2h-skeleton').style.display = 'none';
+    document.getElementById('h2h-grid-wrapper').style.display = '';
+    document.getElementById('h2h-error').style.display = 'none';
+  }
+
+  // ===== Fetch Matrix (standalone for non-premium fallback) =====
+  window.fetchMatrix = function() {
+    if (!IS_PREMIUM) return;
+    fetch('/api/dashboard/matrix?category=' + currentCategory)
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderMatrix(data); })
+      .catch(function() { showMatrixError(); });
+  };
+
+  // ===== Render Matrix =====
+  function renderMatrix(data) {
+    if (!data || !data.success || !data.tools) { showMatrixError(); return; }
+
+    matrixTools = data.tools;
+    matrixCells = data.cells;
+
+    // Update category label
+    var catLabels = {'writing_quality':'Writing Quality','accuracy':'Accuracy','creativity':'Creativity','usefulness':'Usefulness','overall':'Overall'};
+    document.getElementById('h2h-category-label').textContent = catLabels[data.category] || data.category;
+
+    // Build lookup: (tool_a_id, tool_b_id) -> cell
+    var cellMap = {};
+    data.cells.forEach(function(c) {
+      cellMap[c.tool_a_id + '-' + c.tool_b_id] = c;
+    });
+
+    // Build header
+    var thead = document.getElementById('h2h-thead');
+    var headHtml = '<tr><th></th>';
+    data.tools.forEach(function(t) {
+      headHtml += '<th>' + escapeHtml(t.name) + '</th>';
+    });
+    headHtml += '</tr>';
+    thead.innerHTML = headHtml;
+
+    // Build body
+    var tbody = document.getElementById('h2h-tbody');
+    var bodyHtml = '';
+    data.tools.forEach(function(rowTool, ri) {
+      bodyHtml += '<tr data-row-idx="' + ri + '">';
+      bodyHtml += '<th class="text-end pe-2" style="font-size:0.8rem;font-weight:600;">' + escapeHtml(rowTool.name) + '</th>';
+      data.tools.forEach(function(colTool, ci) {
+        if (rowTool.tool_id === colTool.tool_id) {
+          // Diagonal
+          bodyHtml += '<td class="h2h-cell h2h-cell-diagonal" data-col-idx="' + ci + '">&mdash;</td>';
+        } else {
+          // Find the cell - canonical ordering
+          var aId = Math.min(rowTool.tool_id, colTool.tool_id);
+          var bId = Math.max(rowTool.tool_id, colTool.tool_id);
+          var cell = cellMap[aId + '-' + bId];
+
+          if (!cell) {
+            bodyHtml += '<td class="h2h-cell h2h-cell-nodata" data-col-idx="' + ci + '">-</td>';
+          } else if (cell.pending) {
+            bodyHtml += '<td class="h2h-cell h2h-cell-pending" data-col-idx="' + ci + '" title="This tool hasn\'t launched yet.">Pending</td>';
+          } else {
+            // Win rate of row tool against col tool
+            var wr;
+            if (rowTool.tool_id === aId) {
+              wr = cell.tool_a_win_rate;
+            } else {
+              wr = cell.tool_b_win_rate;
+            }
+            var wrPct = wr !== null ? Math.round(wr * 100) : null;
+            var heatClass = getHeatmapClass(wrPct);
+            var confClass = cell.confidence === 'low' ? ' low-confidence' : '';
+            var confIcon = cell.confidence === 'low' ? '<span style="font-size:0.65rem;"> *</span>' : '';
+            var tooltip = escapeHtml(rowTool.name) + ' beats ' + escapeHtml(colTool.name) + ' ' + (wrPct !== null ? wrPct + '%' : '?') + ' of the time (' + cell.total_votes + ' votes, ' + cell.confidence + ' confidence)';
+
+            bodyHtml += '<td class="h2h-cell ' + heatClass + confClass + '" data-col-idx="' + ci + '"';
+            bodyHtml += ' data-slug-a="' + rowTool.slug + '" data-slug-b="' + colTool.slug + '"';
+            bodyHtml += ' title="' + tooltip + '"';
+            bodyHtml += ' onclick="openPairPanel(\'' + rowTool.slug + '\',\'' + colTool.slug + '\')">';
+            bodyHtml += (wrPct !== null ? wrPct + '%' : '-') + confIcon;
+            bodyHtml += '</td>';
+          }
+        }
+      });
+      bodyHtml += '</tr>';
+    });
+    tbody.innerHTML = bodyHtml;
+
+    // Crosshair hover
+    var allRows = tbody.querySelectorAll('tr');
+    tbody.querySelectorAll('.h2h-cell').forEach(function(cell) {
+      cell.addEventListener('mouseenter', function() {
+        var row = cell.parentElement;
+        var colIdx = cell.dataset.colIdx;
+        row.classList.add('h2h-row-highlight');
+        allRows.forEach(function(r) {
+          var td = r.querySelector('[data-col-idx="' + colIdx + '"]');
+          if (td) td.classList.add('h2h-col-highlight');
+        });
+      });
+      cell.addEventListener('mouseleave', function() {
+        var row = cell.parentElement;
+        var colIdx = cell.dataset.colIdx;
+        row.classList.remove('h2h-row-highlight');
+        allRows.forEach(function(r) {
+          var td = r.querySelector('[data-col-idx="' + colIdx + '"]');
+          if (td) td.classList.remove('h2h-col-highlight');
+        });
+      });
+    });
+
+    showMatrixContent();
+
+    // Populate mobile selectors
+    populatePairSelector(data.tools, data.cells);
+  }
+
+  function getHeatmapClass(wrPct) {
+    if (wrPct === null) return 'h2h-cell-nodata';
+    if (wrPct <= 35) return 'h2h-cell-strong-lose';
+    if (wrPct <= 45) return 'h2h-cell-slight-lose';
+    if (wrPct <= 54) return 'h2h-cell-even';
+    if (wrPct <= 64) return 'h2h-cell-slight-win';
+    return 'h2h-cell-strong-win';
+  }
+
+  // ===== Pair Panel =====
+  window.openPairPanel = function(slugA, slugB) {
+    var panel = document.getElementById('h2h-panel');
+    var overlay = document.getElementById('h2h-overlay');
+    var content = document.getElementById('h2h-panel-content');
+    var title = document.getElementById('h2h-panel-title');
+
+    content.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm" role="status"></div><p class="text-muted small mt-2">Loading...</p></div>';
+    title.textContent = 'Loading...';
+    overlay.classList.add('open');
+    panel.classList.add('open');
+
+    fetch('/api/dashboard/matrix/pair/' + slugA + '/' + slugB)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.success) {
+          content.innerHTML = '<p class="text-danger">Failed to load data.</p>';
+          return;
+        }
+        title.textContent = escapeHtml(data.tool_a.name) + ' vs ' + escapeHtml(data.tool_b.name);
+        renderPairPanel(data, content);
+      })
+      .catch(function() {
+        content.innerHTML = '<p class="text-danger">Failed to load data.</p>';
+      });
+  };
+
+  function renderPairPanel(data, container) {
+    var catLabels = {'writing_quality':'Writing Quality','accuracy':'Accuracy','creativity':'Creativity','usefulness':'Usefulness','overall':'Overall'};
+    var html = '';
+
+    // Category breakdown
+    html += '<h6 class="text-muted small text-uppercase mb-3">Per-Category Breakdown</h6>';
+    html += '<div class="mb-4">';
+    data.categories.forEach(function(cat) {
+      var isActive = cat.category === currentCategory;
+      var aWr = cat.tool_a_win_rate !== null ? Math.round(cat.tool_a_win_rate * 100) : 0;
+      var bWr = cat.tool_b_win_rate !== null ? Math.round(cat.tool_b_win_rate * 100) : 0;
+      var aClass = getHeatmapClass(aWr);
+      var bClass = getHeatmapClass(bWr);
+
+      html += '<div class="mb-3' + (isActive ? ' border-start border-primary border-3 ps-2' : '') + '">';
+      html += '<div class="d-flex justify-content-between align-items-center mb-1">';
+      html += '<span class="small fw-semibold">' + (catLabels[cat.category] || cat.category) + '</span>';
+      html += '<span class="badge rounded-pill confidence-' + cat.confidence + '" style="font-size:0.65rem;">' + capitalize(cat.confidence) + '</span>';
+      html += '</div>';
+      html += '<div class="d-flex align-items-center gap-2 mb-1">';
+      html += '<span class="small fw-bold ' + aClass + '" style="min-width:40px;padding:1px 4px;border-radius:3px;">' + aWr + '%</span>';
+      html += '<div class="h2h-stacked-bar flex-grow-1">';
+      html += '<div class="bar-a" style="width:' + aWr + '%;"></div>';
+      html += '<div class="bar-b" style="width:' + bWr + '%;"></div>';
+      html += '</div>';
+      html += '<span class="small fw-bold" style="min-width:40px;text-align:right;">' + bWr + '%</span>';
+      html += '</div>';
+      html += '<div class="d-flex justify-content-between"><small class="text-muted">' + data.tool_a.name + '</small>';
+      html += '<small class="text-muted">' + cat.total_votes + ' votes</small>';
+      html += '<small class="text-muted">' + data.tool_b.name + '</small></div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // Recent matchups
+    if (data.recent_matchups && data.recent_matchups.length > 0) {
+      html += '<h6 class="text-muted small text-uppercase mb-3">Recent Matchups</h6>';
+      data.recent_matchups.forEach(function(m) {
+        var dt = new Date(m.created_at);
+        html += '<div class="d-flex justify-content-between align-items-center py-2 border-bottom">';
+        html += '<div><small class="text-muted">' + dt.toLocaleDateString() + '</small>';
+        html += '<br><small>' + m.total_votes + ' votes</small></div>';
+        if (m.user_has_voted) {
+          html += '<a href="/compare/' + m.matchup_id + '" class="btn btn-sm btn-outline-secondary">View Results</a>';
+        } else {
+          html += '<a href="/compare/' + m.matchup_id + '" class="btn btn-sm btn-primary">Vote Now</a>';
+        }
+        html += '</div>';
+      });
+      if (data.total_matchups > 5) {
+        html += '<div class="text-center mt-2">';
+        html += '<small class="text-muted">' + data.total_matchups + ' total matchups</small>';
+        html += '</div>';
+      }
+    } else {
+      html += '<p class="text-muted small">No matchups yet for this pair.</p>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  window.closePairPanel = function() {
+    document.getElementById('h2h-panel').classList.remove('open');
+    document.getElementById('h2h-overlay').classList.remove('open');
+  };
+
+  document.getElementById('h2h-overlay').addEventListener('click', closePairPanel);
+
+  // ===== Mobile Pair Selector =====
+  function populatePairSelector(tools, cells) {
+    var selA = document.getElementById('h2h-select-a');
+    var selB = document.getElementById('h2h-select-b');
+
+    // Only populate once (tools don't change across categories)
+    if (selA.options.length === 0) {
+      tools.forEach(function(t) {
+        if (t.status === 'pending') return;
+        selA.add(new Option(t.name, t.slug));
+        selB.add(new Option(t.name, t.slug));
+      });
+
+      // Default to pair with most votes
+      var bestPair = null;
+      var bestVotes = -1;
+      cells.forEach(function(c) {
+        if (!c.pending && c.total_votes > bestVotes) {
+          bestVotes = c.total_votes;
+          var tA = tools.find(function(t) { return t.tool_id === c.tool_a_id; });
+          var tB = tools.find(function(t) { return t.tool_id === c.tool_b_id; });
+          if (tA && tB) bestPair = { a: tA.slug, b: tB.slug };
+        }
+      });
+      if (bestPair && selA.options.length >= 2) {
+        selA.value = bestPair.a;
+        selB.value = bestPair.b;
+      } else if (selA.options.length >= 2) {
+        selB.selectedIndex = 1;
+      }
+
+      selA.addEventListener('change', loadMobilePair);
+      selB.addEventListener('change', loadMobilePair);
+    }
+
+    loadMobilePair();
+  }
+
+  function loadMobilePair() {
+    var slugA = document.getElementById('h2h-select-a').value;
+    var slugB = document.getElementById('h2h-select-b').value;
+    var detail = document.getElementById('h2h-mobile-detail');
+
+    if (!slugA || !slugB || slugA === slugB) {
+      detail.innerHTML = '<p class="text-muted small text-center py-3">Select two different tools to compare.</p>';
+      return;
+    }
+
+    detail.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm" role="status"></div></div>';
+
+    fetch('/api/dashboard/matrix/pair/' + slugA + '/' + slugB)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.success) {
+          detail.innerHTML = '<p class="text-danger small">Failed to load data.</p>';
+          return;
+        }
+        var titleHtml = '<h6 class="fw-bold mb-3">' + escapeHtml(data.tool_a.name) + ' vs ' + escapeHtml(data.tool_b.name) + '</h6>';
+        detail.innerHTML = titleHtml;
+        var contentDiv = document.createElement('div');
+        detail.appendChild(contentDiv);
+        renderPairPanel(data, contentDiv);
+      })
+      .catch(function() {
+        detail.innerHTML = '<p class="text-danger small">Failed to load data.</p>';
+      });
+  }
+
+  // ===== Helpers =====
+  function escapeHtml(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  function capitalize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // ===== User Stats Quick Card =====
+  function fetchUserStats() {
+    if (!IS_PREMIUM) return;
+    var card = document.getElementById('user-stats-card');
+    if (!card) return;
+
+    fetch('/api/users/me/vote-stats')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.empty || !data.success) {
+          card.innerHTML = '<div class="text-center py-3"><i class="bi bi-ballot text-muted" style="font-size:1.5rem;"></i><p class="text-muted mt-2 mb-1">No votes yet</p><a href="/compare" class="btn btn-sm btn-outline-primary">Start Voting</a></div>';
+          return;
+        }
+        var agreeClass = 'text-warning';
+        var agreeRate = data.majority_agreement_rate != null ? Math.round(data.majority_agreement_rate * 100) : null;
+        if (agreeRate !== null) {
+          if (agreeRate >= 70) agreeClass = 'text-success';
+          else if (agreeRate < 50) agreeClass = 'text-danger';
+        }
+        var favTool = data.favorite_tool ? data.favorite_tool.name : '—';
+        var html = '<div class="row g-3 text-center">';
+        html += '<div class="col-6 col-md-3"><div class="fw-bold fs-4">' + data.total_votes_cast + '</div><small class="text-muted">Total Votes</small></div>';
+        html += '<div class="col-6 col-md-3"><div class="fw-bold fs-4 ' + agreeClass + '">' + (agreeRate !== null ? agreeRate + '%' : '—') + '</div><small class="text-muted">Community Agreement</small></div>';
+        html += '<div class="col-6 col-md-3"><div class="fw-bold fs-4">' + data.current_streak + '</div><small class="text-muted">Day Streak</small></div>';
+        html += '<div class="col-6 col-md-3"><div class="fw-bold fs-4">' + favTool + '</div><small class="text-muted">Favorite Tool</small></div>';
+        html += '</div>';
+        html += '<div class="text-center mt-3"><a href="/dashboard/history" class="btn btn-sm btn-outline-primary"><i class="bi bi-clock-history me-1"></i>View Full History</a></div>';
+        card.innerHTML = html;
+      })
+      .catch(function() {
+        card.innerHTML = '<p class="text-muted text-center mb-0 small">Could not load stats.</p>';
+      });
+  }
+
+  // ===== Init =====
+  fetchAll();
+  fetchUserStats();
+  startPolling();
+})();
+</script>
+{% endblock %}

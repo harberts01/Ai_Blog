@@ -3,7 +3,7 @@ Authentication Module
 Handles user authentication, session management, and access control
 """
 from functools import wraps
-from flask import session, redirect, url_for, flash, request
+from flask import session, redirect, url_for, flash, request, jsonify
 import database as db
 
 
@@ -89,6 +89,44 @@ def admin_required(f):
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
         
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def premium_required(f):
+    """
+    Decorator to require premium subscription for routes.
+
+    For API routes (/api/*): returns JSON 401/403 with structured error.
+    For page routes: flashes warning and redirects to pricing page.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({
+                    'error': {
+                        'code': 'AUTH_REQUIRED',
+                        'message': 'Authentication required.',
+                        'details': {}
+                    }
+                }), 401
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login', next=request.url))
+
+        if not db.is_user_premium(session['user_id']):
+            if request.path.startswith('/api/'):
+                return jsonify({
+                    'error': {
+                        'code': 'PREMIUM_REQUIRED',
+                        'message': 'This feature requires a premium subscription.',
+                        'details': {},
+                        'upgrade_url': '/pricing'
+                    }
+                }), 403
+            flash('Premium subscription required.', 'warning')
+            return redirect(url_for('pricing'))
+
         return f(*args, **kwargs)
     return decorated_function
 

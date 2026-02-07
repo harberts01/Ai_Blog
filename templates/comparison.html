@@ -1,160 +1,735 @@
 {% extends "base.html" %}
-{% block title %}{{ comparison.topic }} - AI Comparison{% endblock %}
+{% block title %}Post A vs Post B — Blind Comparison{% endblock %}
+{% block description %}Compare two AI-generated posts side by side and vote on which is better.{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===== Layout ===== */
+.compare-columns { display: flex; gap: 1.5rem; min-height: 400px; }
+.compare-col { flex: 1; min-width: 0; }
+.post-scroll-area {
+  max-height: 70vh; overflow-y: auto; padding: 1.25rem;
+  border: 1px solid var(--bs-border-color); border-radius: .5rem;
+  background: var(--bs-body-bg);
+}
+.post-scroll-area .post-content h1,
+.post-scroll-area .post-content h2,
+.post-scroll-area .post-content h3 { font-size: 1.15rem; margin-top: 1rem; }
+.post-scroll-area .post-content img { max-width: 100%; height: auto; }
+
+/* ===== Column Headers ===== */
+.col-header {
+  padding: .75rem 1rem; border-radius: .5rem .5rem 0 0;
+  font-weight: 600; text-align: center;
+}
+.col-header-left { background: var(--bs-primary); color: #fff; }
+.col-header-right { background: var(--bs-indigo, #6610f2); color: #fff; }
+.tool-name-reveal {
+  display: none; animation: fadeSlideIn .3s ease;
+}
+.results-visible .tool-name-reveal { display: inline; }
+.results-visible .blind-label { display: none; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Metrics Bar ===== */
+.metrics-bar { font-size: .8rem; padding: .4rem 1rem; background: var(--bs-light); border-bottom: 1px solid var(--bs-border-color); }
+
+/* ===== Voting Panel ===== */
+.voting-panel { transition: opacity .3s; }
+.voting-panel.gated { opacity: .35; pointer-events: none; }
+.vote-categories { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; }
+.vote-card {
+  flex: 1 1 170px; max-width: 220px; border: 1px solid var(--bs-border-color);
+  border-radius: .5rem; padding: .75rem; text-align: center; background: var(--bs-body-bg);
+}
+.vote-card h6 { font-size: .85rem; margin-bottom: .25rem; }
+.vote-card .vote-desc { font-size: .72rem; color: var(--bs-secondary); margin-bottom: .5rem; }
+.vote-btn {
+  border: 2px solid var(--bs-border-color); border-radius: .375rem;
+  padding: .35rem .75rem; font-size: .8rem; cursor: pointer;
+  background: transparent; transition: all .15s; width: 48%;
+}
+.vote-btn:hover { border-color: var(--bs-primary); }
+.vote-btn.selected-left { background: var(--bs-primary); color: #fff; border-color: var(--bs-primary); }
+.vote-btn.selected-right { background: var(--bs-indigo, #6610f2); color: #fff; border-color: var(--bs-indigo, #6610f2); }
+
+/* ===== Submit Bar ===== */
+.submit-bar {
+  position: sticky; bottom: 0; z-index: 100; padding: .75rem;
+  background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
+  box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+}
+
+/* ===== Results ===== */
+.result-bar-wrap { display: flex; height: 24px; border-radius: .25rem; overflow: hidden; margin: .35rem 0; }
+.result-bar-a { background: var(--bs-primary); transition: width .6s ease; }
+.result-bar-b { background: var(--bs-indigo, #6610f2); transition: width .6s ease; }
+.result-winner { font-weight: 600; }
+.trophy-icon { color: #f0ad4e; }
+
+/* ===== Mobile ===== */
+.mobile-tabs { display: none; }
+@media (max-width: 767.98px) {
+  .compare-columns { flex-direction: column; gap: 0; }
+  .compare-col { display: none; }
+  .compare-col.active-mobile { display: block; }
+  .mobile-tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+  .mobile-tab {
+    flex: 1; padding: .5rem; text-align: center; border: 2px solid var(--bs-border-color);
+    border-radius: .375rem; cursor: pointer; font-weight: 600; font-size: .9rem;
+  }
+  .mobile-tab.active { border-color: var(--bs-primary); background: var(--bs-primary); color: #fff; }
+  .vote-card { max-width: 100%; flex: 1 1 100%; }
+}
+
+/* ===== Countdown ===== */
+.countdown-badge { font-size: .8rem; }
+
+/* ===== Gate Message ===== */
+.gate-message { text-align: center; padding: 1rem; color: var(--bs-secondary); font-style: italic; }
+
+/* ===== Free User Disabled State ===== */
+.voting-panel-disabled { position: relative; opacity: 0.5; pointer-events: none; }
+.voting-panel-disabled .vote-btn { cursor: not-allowed; }
+.blurred-teaser { filter: blur(6px); pointer-events: none; user-select: none; }
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="py-5 bg-light">
+<section class="py-3 py-md-4">
   <div class="container">
     <!-- Header -->
-    <div class="text-center mb-4">
-      <nav aria-label="breadcrumb" class="mb-3">
-        <ol class="breadcrumb justify-content-center">
-          <li class="breadcrumb-item"><a href="{{ url_for('compare_page') }}">Compare</a></li>
-          <li class="breadcrumb-item active">{{ comparison.topic }}</li>
-        </ol>
-      </nav>
-      <h1 class="h2">
-        <i class="bi bi-arrow-left-right me-2"></i>{{ comparison.topic }}
-      </h1>
-      <p class="text-muted">
-        {{ comparison.posts|length }} AI tools compared • {{ total_votes }} vote{% if total_votes != 1 %}s{% endif %}
-      </p>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <a href="{{ url_for('compare_page') }}" class="btn btn-sm btn-outline-secondary me-2">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
+      </div>
+      <div class="text-center">
+        <h1 class="h4 mb-0">
+          <span class="blind-label">Post A vs Post B</span>
+          <span class="tool-name-reveal" id="header-tool-names"></span>
+        </h1>
+        {% if matchup.prompt_id %}
+        <small class="text-muted">Same prompt comparison</small>
+        {% endif %}
+      </div>
+      <div>
+        <span class="badge bg-secondary" id="total-votes-badge">{{ total_vote_count }} vote{{ 's' if total_vote_count != 1 }}</span>
+      </div>
     </div>
 
-    <!-- Voting Results Summary -->
-    {% if total_votes > 0 %}
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-body">
-        <h5 class="card-title mb-3"><i class="bi bi-trophy me-2"></i>Current Results</h5>
-        <div class="row g-3">
-          {% for post in comparison.posts|sort(attribute='votes', reverse=True) %}
-          <div class="col">
-            <div class="d-flex align-items-center">
-              <div class="me-3">
-                {% if loop.index == 1 %}
-                <span class="badge bg-warning text-dark fs-6"><i class="bi bi-trophy"></i></span>
-                {% else %}
-                <span class="badge bg-secondary">{{ loop.index }}</span>
-                {% endif %}
+    <!-- Mobile Tab Switcher -->
+    <div class="mobile-tabs" id="mobile-tabs">
+      <div class="mobile-tab active" data-side="left" onclick="switchMobileTab('left')">Post A</div>
+      <div class="mobile-tab" data-side="right" onclick="switchMobileTab('right')">Post B</div>
+    </div>
+
+    <!-- Two-Column Posts -->
+    <div class="compare-columns" id="compare-columns">
+      <!-- Left Column -->
+      <div class="compare-col active-mobile" id="col-left" data-side="{{ left_post.side }}">
+        <div class="col-header col-header-left">
+          <span class="blind-label">Post A</span>
+          <span class="tool-name-reveal" id="tool-name-left"></span>
+        </div>
+        <div class="metrics-bar d-flex justify-content-around">
+          <span><strong>{{ left_post.metrics.word_count }}</strong> words</span>
+          <span><strong>{{ left_post.metrics.vocab_richness }}%</strong> vocab</span>
+          <span>Grade <strong>{{ left_post.metrics.reading_level }}</strong></span>
+        </div>
+        <div class="post-scroll-area" id="scroll-left">
+          <h5>{{ left_post.title }}</h5>
+          <div class="post-content">{{ left_post.content|safe }}</div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="compare-col" id="col-right" data-side="{{ right_post.side }}">
+        <div class="col-header col-header-right">
+          <span class="blind-label">Post B</span>
+          <span class="tool-name-reveal" id="tool-name-right"></span>
+        </div>
+        <div class="metrics-bar d-flex justify-content-around">
+          <span><strong>{{ right_post.metrics.word_count }}</strong> words</span>
+          <span><strong>{{ right_post.metrics.vocab_richness }}%</strong> vocab</span>
+          <span>Grade <strong>{{ right_post.metrics.reading_level }}</strong></span>
+        </div>
+        <div class="post-scroll-area" id="scroll-right">
+          <h5>{{ right_post.title }}</h5>
+          <div class="post-content">{{ right_post.content|safe }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Voting Panel -->
+    <div class="mt-4" id="voting-section">
+      {% if not current_user %}
+      <!-- Not logged in -->
+      <div class="alert alert-info text-center">
+        <i class="bi bi-lock me-2"></i>
+        <a href="{{ url_for('login', next=request.url) }}">Log in</a> to vote on this comparison.
+      </div>
+      {% elif not is_premium %}
+      <!-- Free user: disabled voting panel + blurred results teaser -->
+      {% set cat_descriptions_free = {
+        'writing_quality': 'Grammar, flow, and readability',
+        'accuracy': 'Factual correctness and depth',
+        'creativity': 'Originality and unique angles',
+        'usefulness': 'Practical value and actionable insights',
+        'overall': 'Your holistic preference'
+      } %}
+      {% set mock_pcts = [55, 60, 48, 62, 57] %}
+
+      <div class="voting-panel-disabled" id="voting-panel-disabled">
+        <div class="vote-categories" style="display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center;">
+          {% for cat in vote_categories %}
+          <div class="vote-card">
+            <h6>{{ cat.replace('_', ' ').title() }}</h6>
+            <div class="vote-desc">{{ cat_descriptions_free[cat] }}</div>
+            <div class="d-flex gap-1 justify-content-center">
+              <button class="vote-btn" disabled><i class="bi bi-lock-fill me-1"></i>Post A</button>
+              <button class="vote-btn" disabled><i class="bi bi-lock-fill me-1"></i>Post B</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Upgrade to Vote CTA -->
+      <div class="submit-bar">
+        <div class="d-flex justify-content-center align-items-center gap-3">
+          <button class="btn btn-warning btn-lg px-5 fw-bold" id="upgrade-to-vote-btn" onclick="showUpgradeModal('submit_cta')">
+            <i class="bi bi-star-fill me-1"></i>Upgrade to Vote
+          </button>
+        </div>
+      </div>
+
+      <!-- Blurred Results Teaser -->
+      <div class="mt-4" style="position: relative; min-height: 200px;">
+        <div class="blurred-teaser">
+          <div class="vote-categories" style="display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center;">
+            {% for cat in vote_categories %}
+            <div class="vote-card">
+              <h6>{{ cat.replace('_', ' ').title() }}</h6>
+              <div class="result-bar-wrap" style="display: flex; height: 24px; border-radius: .25rem; overflow: hidden; margin: .35rem 0;">
+                <div style="width: {{ mock_pcts[loop.index0] }}%; background: var(--bs-primary);"></div>
+                <div style="width: {{ 100 - mock_pcts[loop.index0] }}%; background: var(--bs-indigo, #6610f2);"></div>
               </div>
-              <div class="flex-grow-1">
-                <div class="d-flex justify-content-between mb-1">
-                  <strong>{{ post.tool_name }}</strong>
-                  <span>{{ post.votes }} vote{% if post.votes != 1 %}s{% endif %} ({{ post.vote_percentage|round(1) }}%)</span>
-                </div>
-                <div class="progress" style="height: 8px;">
-                  <div class="progress-bar {% if loop.index == 1 %}bg-warning{% else %}bg-primary{% endif %}" 
-                       style="width: {{ post.vote_percentage }}%"></div>
-                </div>
+              <div class="d-flex justify-content-between small">
+                <span>Tool ?: {{ mock_pcts[loop.index0] }}%</span>
+                <span>Tool ?: {{ 100 - mock_pcts[loop.index0] }}%</span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <!-- Overlay card -->
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; width: 90%; max-width: 400px;">
+          <div class="card shadow-lg border-0 text-center p-4">
+            <h5 class="fw-bold mb-2"><i class="bi bi-bar-chart-fill me-2"></i>See How the Community Voted</h5>
+            <p class="text-muted small mb-3">Premium members can vote, compare tools, and access the full analytics dashboard.</p>
+            <button class="btn btn-primary" onclick="showUpgradeModal('results_teaser')">
+              <i class="bi bi-star-fill me-1"></i>Upgrade to Premium
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {% include "components/_upgrade_modal.html" %}
+      {% elif has_voted and votes_locked %}
+      <!-- Voted & locked — show results only -->
+      <div class="text-center mb-3">
+        <span class="badge bg-secondary"><i class="bi bi-lock me-1"></i>Votes locked</span>
+      </div>
+      <div id="results-panel">
+        {% include "components/_vote_results.html" ignore missing %}
+      </div>
+      {% else %}
+      <!-- Can vote (or edit within window) -->
+      <div class="voting-panel {% if not has_voted %}gated{% endif %}" id="voting-panel">
+        <div class="gate-message" id="gate-message">
+          <i class="bi bi-book me-1"></i> Read both posts before voting.
+        </div>
+
+        {% if has_voted and not votes_locked %}
+        <div class="text-center mb-2">
+          <span class="badge bg-warning text-dark countdown-badge" id="edit-countdown"></span>
+        </div>
+        {% endif %}
+
+        <div class="vote-categories" id="vote-categories">
+          {% set cat_descriptions = {
+            'writing_quality': 'Grammar, flow, and readability',
+            'accuracy': 'Factual correctness and depth',
+            'creativity': 'Originality and unique angles',
+            'usefulness': 'Practical value and actionable insights',
+            'overall': 'Your holistic preference'
+          } %}
+          {% for cat in vote_categories %}
+          <div class="vote-card" data-category="{{ cat }}">
+            <h6>{{ cat.replace('_', ' ').title() }}</h6>
+            <div class="vote-desc">{{ cat_descriptions[cat] }}</div>
+            <div class="d-flex gap-1 justify-content-center">
+              <button class="vote-btn" data-winner="left"
+                onclick="selectVote('{{ cat }}', 'left', this)">Post A</button>
+              <button class="vote-btn" data-winner="right"
+                onclick="selectVote('{{ cat }}', 'right', this)">Post B</button>
+            </div>
+            <!-- Results overlay (hidden until reveal) -->
+            <div class="result-display mt-2" style="display:none;">
+              <div class="result-bar-wrap">
+                <div class="result-bar-a" id="bar-a-{{ cat }}" style="width:0%"></div>
+                <div class="result-bar-b" id="bar-b-{{ cat }}" style="width:0%"></div>
+              </div>
+              <div class="d-flex justify-content-between small">
+                <span id="pct-a-{{ cat }}"></span>
+                <span id="pct-b-{{ cat }}"></span>
               </div>
             </div>
           </div>
           {% endfor %}
         </div>
       </div>
-    </div>
-    {% endif %}
 
-    <!-- Side by Side Comparison -->
-    <div class="row g-4">
-      {% for post in comparison.posts %}
-      <div class="col-lg-{{ 12 // comparison.posts|length }}">
-        <div class="card border-0 shadow-sm h-100 {% if user_vote == post.id %}border-primary border-2{% endif %}">
-          <div class="card-header bg-white d-flex justify-content-between align-items-center">
-            <div>
-              <h5 class="mb-0">{{ post.tool_name }}</h5>
-              {% if user_vote == post.id %}
-              <span class="badge bg-success"><i class="bi bi-check me-1"></i>Your Vote</span>
-              {% endif %}
-            </div>
-            {% if current_user %}
-            <form action="{{ url_for('vote_comparison', comparison_id=comparison.id, post_id=post.id) }}" method="POST">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-              <button type="submit" class="btn btn-{% if user_vote == post.id %}success{% else %}outline-primary{% endif %} btn-sm">
-                <i class="bi bi-hand-thumbs-up me-1"></i>
-                {% if user_vote == post.id %}Voted{% else %}Vote{% endif %}
-              </button>
-            </form>
-            {% endif %}
-          </div>
-          
-          <!-- Style Metrics -->
-          <div class="card-body border-bottom bg-light py-2">
-            <div class="row text-center small">
-              <div class="col" title="Word Count">
-                <strong>{{ post.metrics.word_count }}</strong>
-                <br><span class="text-muted">Words</span>
-              </div>
-              <div class="col" title="Average words per sentence">
-                <strong>{{ post.metrics.avg_words_per_sentence }}</strong>
-                <br><span class="text-muted">Words/Sent</span>
-              </div>
-              <div class="col" title="Vocabulary richness (unique words %)">
-                <strong>{{ post.metrics.vocab_richness }}%</strong>
-                <br><span class="text-muted">Vocab</span>
-              </div>
-              <div class="col" title="Reading Level (Grade)">
-                <strong>{{ post.metrics.reading_level }}</strong>
-                <br><span class="text-muted">Grade</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Post Title -->
-          <div class="card-body border-bottom">
-            <h6 class="card-title">
-              <a href="{{ url_for('post', post_id=post.id) }}" class="text-decoration-none">
-                {{ post.title }}
-              </a>
-            </h6>
-            <span class="badge bg-secondary">{{ post.category }}</span>
-          </div>
-          
-          <!-- Post Content Preview -->
-          <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-            <div class="post-content-preview">
-              {{ post.content|safe }}
-            </div>
-          </div>
-          
-          <div class="card-footer bg-white">
-            <a href="{{ url_for('post', post_id=post.id) }}" class="btn btn-outline-secondary btn-sm w-100">
-              <i class="bi bi-eye me-1"></i>Read Full Post
-            </a>
-          </div>
+      <!-- Submit Bar -->
+      <div class="submit-bar" id="submit-bar" {% if has_voted and votes_locked %}style="display:none;"{% endif %}>
+        <div class="d-flex justify-content-center align-items-center gap-3">
+          <button class="btn btn-primary px-4" id="submit-btn" disabled onclick="submitVotes()">
+            <span id="submit-text">Submit Votes (0 of 5)</span>
+            <span id="submit-spinner" class="spinner-border spinner-border-sm ms-1" style="display:none;" role="status"></span>
+          </button>
         </div>
+        <div id="vote-error" class="alert alert-danger mt-2 mx-auto text-center small" style="display:none; max-width: 500px;" role="alert"></div>
       </div>
-      {% endfor %}
+      {% endif %}
     </div>
 
-    <!-- Login Prompt -->
-    {% if not current_user %}
-    <div class="alert alert-info text-center mt-4">
-      <i class="bi bi-info-circle me-2"></i>
-      <a href="{{ url_for('login') }}">Log in</a> to vote for your favorite AI writer!
-    </div>
-    {% endif %}
-
-    <!-- Back Link -->
-    <div class="text-center mt-4">
-      <a href="{{ url_for('compare_page') }}" class="btn btn-outline-primary">
-        <i class="bi bi-arrow-left me-1"></i>Compare More
+    <!-- Results Section (shown after voting) -->
+    <div id="post-vote-actions" style="display:none;" class="text-center mt-4">
+      <a href="{{ url_for('compare_page') }}" class="btn btn-outline-primary me-2">
+        <i class="bi bi-arrow-left-right me-1"></i>Compare Another
+      </a>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-bar-chart me-1"></i>View Dashboard
       </a>
     </div>
+    {% if is_premium %}
+    <div id="vote-history-nudge" style="display:none;" class="text-center mt-2">
+      <small class="text-muted">
+        <i class="bi bi-clock-history me-1"></i>This vote has been added to your
+        <a href="{{ url_for('dashboard_history') }}">voting history</a>.
+      </small>
+    </div>
+    {% endif %}
   </div>
 </section>
+{% endblock %}
 
-<style>
-  .post-content-preview {
-    font-size: 0.9rem;
+{% block extra_js %}
+<script>
+(function() {
+  // ===== Configuration =====
+  const MATCHUP_ID = {{ matchup.matchup_id }};
+  const CSRF_TOKEN = '{{ csrf_token() }}';
+  const POSITION_A_IS_LEFT = {{ 'true' if position_a_is_left else 'false' }};
+  const TOOL_A_ID = {{ matchup.tool_a }};
+  const TOOL_B_ID = {{ matchup.tool_b }};
+  let HAS_VOTED = {{ 'true' if has_voted else 'false' }};
+  const VOTES_LOCKED = {{ 'true' if votes_locked else 'false' }};
+  const VOTE_LOCK_MINUTES = {{ vote_lock_minutes }};
+  const EARLIEST_VOTE_TIME = {{ ("'" + earliest_vote_time + "'")|safe if earliest_vote_time else 'null' }};
+  const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
+  const EXISTING_VOTES = {{ user_vote_map|tojson }};
+
+  // Tool names (only used after reveal)
+  const TOOL_A_NAME = {{ matchup.tool_a_name|tojson }};
+  const TOOL_B_NAME = {{ matchup.tool_b_name|tojson }};
+
+  {% if results %}
+  const INITIAL_RESULTS = {{ results|tojson }};
+  {% else %}
+  const INITIAL_RESULTS = null;
+  {% endif %}
+
+  // ===== State =====
+  const selections = {};
+  let voteGateOpen = HAS_VOTED;
+  let pageLoadTime = Date.now();
+
+  // ===== Free User: disabled panel click handler =====
+  if (!IS_PREMIUM) {
+    let freeVoteClicks = 0;
+    const disabledPanel = document.getElementById('voting-panel-disabled');
+    if (disabledPanel) {
+      disabledPanel.style.pointerEvents = 'auto';
+      disabledPanel.style.cursor = 'not-allowed';
+      disabledPanel.addEventListener('click', function(e) {
+        e.preventDefault();
+        freeVoteClicks++;
+        if (freeVoteClicks <= 1) {
+          window.showUpgradeModal && window.showUpgradeModal('vote_button');
+        } else {
+          const tip = document.createElement('div');
+          tip.className = 'position-fixed bg-dark text-white px-3 py-2 rounded small';
+          tip.style.cssText = 'top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;';
+          tip.textContent = 'Upgrade to vote';
+          document.body.appendChild(tip);
+          setTimeout(function() { tip.remove(); }, 2000);
+        }
+      });
+    }
   }
-  .post-content-preview h1, 
-  .post-content-preview h2, 
-  .post-content-preview h3 {
-    font-size: 1.1rem;
-    margin-top: 1rem;
+
+  // ===== Read-Time Gate =====
+  const votingPanel = document.getElementById('voting-panel');
+  const gateMessage = document.getElementById('gate-message');
+
+  function openVoteGate() {
+    if (voteGateOpen) return;
+    voteGateOpen = true;
+    if (votingPanel) {
+      votingPanel.classList.remove('gated');
+    }
+    if (gateMessage) {
+      gateMessage.style.display = 'none';
+    }
   }
-  .post-content-preview img {
-    max-width: 100%;
-    height: auto;
+
+  if (!HAS_VOTED && IS_PREMIUM) {
+    // Timer: 30 seconds
+    setTimeout(openVoteGate, 30000);
+
+    // Scroll tracking
+    const scrollLeft = document.getElementById('scroll-left');
+    const scrollRight = document.getElementById('scroll-right');
+    function checkScroll(el) {
+      if (!el) return false;
+      const pct = el.scrollTop / (el.scrollHeight - el.clientHeight);
+      return pct >= 0.6;
+    }
+    function onScroll() {
+      if (checkScroll(scrollLeft) || checkScroll(scrollRight)) {
+        openVoteGate();
+        if (scrollLeft) scrollLeft.removeEventListener('scroll', onScroll);
+        if (scrollRight) scrollRight.removeEventListener('scroll', onScroll);
+      }
+    }
+    if (scrollLeft) scrollLeft.addEventListener('scroll', onScroll);
+    if (scrollRight) scrollRight.addEventListener('scroll', onScroll);
+  } else if (HAS_VOTED) {
+    // Already voted — gate is open, maybe show results
+    if (gateMessage) gateMessage.style.display = 'none';
   }
-</style>
+
+  // ===== Pre-populate existing votes =====
+  if (HAS_VOTED && !VOTES_LOCKED) {
+    for (const [cat, side] of Object.entries(EXISTING_VOTES)) {
+      selections[cat] = side;
+      const card = document.querySelector(`.vote-card[data-category="${cat}"]`);
+      if (card) {
+        const btn = card.querySelector(`.vote-btn[data-winner="${side}"]`);
+        if (btn) {
+          btn.classList.add(side === 'left' ? 'selected-left' : 'selected-right');
+          btn.innerHTML = '<i class="bi bi-check2 me-1"></i>' + btn.textContent.trim();
+        }
+      }
+    }
+    updateSubmitButton();
+  }
+
+  // ===== Show results if already voted & locked =====
+  if (HAS_VOTED && VOTES_LOCKED && INITIAL_RESULTS) {
+    showResults(INITIAL_RESULTS, TOOL_A_NAME, TOOL_B_NAME);
+  } else if (HAS_VOTED && !VOTES_LOCKED && INITIAL_RESULTS) {
+    // Within edit window — show results alongside vote editing
+  }
+
+  // ===== Vote Selection =====
+  window.selectVote = function(category, side, btn) {
+    if (!voteGateOpen) return;
+    const card = btn.closest('.vote-card');
+    card.querySelectorAll('.vote-btn').forEach(b => {
+      b.classList.remove('selected-left', 'selected-right');
+      b.innerHTML = b.dataset.winner === 'left' ? 'Post A' : 'Post B';
+    });
+    btn.classList.add(side === 'left' ? 'selected-left' : 'selected-right');
+    btn.innerHTML = '<i class="bi bi-check2 me-1"></i>' + (side === 'left' ? 'Post A' : 'Post B');
+    selections[category] = side;
+    updateSubmitButton();
+  };
+
+  function updateSubmitButton() {
+    const count = Object.keys(selections).length;
+    const submitBtn = document.getElementById('submit-btn');
+    const submitText = document.getElementById('submit-text');
+    if (submitBtn) {
+      submitBtn.disabled = count === 0;
+      submitText.textContent = HAS_VOTED
+        ? `Update Votes (${count} of 5)`
+        : `Submit Votes (${count} of 5)`;
+    }
+  }
+
+  // ===== Inline Error Helpers =====
+  function showInlineError(msg) {
+    const el = document.getElementById('vote-error');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  }
+  function clearInlineErrors() {
+    const el = document.getElementById('vote-error');
+    if (el) el.style.display = 'none';
+  }
+
+  // ===== Submit with Retry (network / 5xx only) =====
+  async function submitWithRetry(url, options, retries = 2) {
+    const delays = [1000, 3000];
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const resp = await fetch(url, options);
+        if (resp.status >= 500 && attempt < retries) {
+          await new Promise(r => setTimeout(r, delays[attempt]));
+          continue;
+        }
+        return resp;
+      } catch (err) {
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, delays[attempt]));
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  // ===== Error Handlers (keyed by error.code) =====
+  const ERROR_HANDLERS = {
+    AUTH_REQUIRED: () => {
+      window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+    },
+    PREMIUM_REQUIRED: () => {
+      if (!(window.showUpgradeModal && window.showUpgradeModal('api_error'))) {
+        showInlineError('Premium subscription required. Visit /pricing to upgrade.');
+      }
+    },
+    MATCHUP_NOT_FOUND: () => {
+      showInlineError('This matchup is no longer available.');
+    },
+    MATCHUP_INACTIVE: () => {
+      showInlineError('This matchup has been closed.');
+    },
+    VOTE_LOCKED: (error, data) => {
+      showInlineError('Your votes have been locked and can no longer be changed.');
+      document.querySelectorAll('.vote-btn').forEach(b => { b.disabled = true; });
+      const bar = document.getElementById('submit-bar');
+      if (bar) bar.style.display = 'none';
+      if (data.results) {
+        showResults(data.results, data.tool_a_name, data.tool_b_name);
+        document.getElementById('post-vote-actions').style.display = 'block';
+      }
+    },
+    DUPLICATE_VOTE: (error, data) => {
+      if (data.results) {
+        showResults(data.results, data.tool_a_name, data.tool_b_name);
+        document.getElementById('submit-bar').style.display = 'none';
+        document.getElementById('post-vote-actions').style.display = 'block';
+      }
+    },
+    RATE_LIMITED: (error) => {
+      const secs = error.details && error.details.retry_after_seconds;
+      showInlineError(secs
+        ? `Daily vote limit reached. Try again in ${Math.ceil(secs / 3600)} hour(s).`
+        : 'Daily vote limit reached. Please try again later.');
+    },
+    EXISTING_VOTES_USE_PATCH: () => 'retry_patch',
+    INVALID_CATEGORY: (e) => showInlineError(e.message || 'Invalid vote category.'),
+    INVALID_WINNER: (e) => showInlineError(e.message || 'Invalid vote selection.'),
+    INVALID_PAYLOAD: (e) => showInlineError(e.message || 'Invalid vote data.'),
+    DUPLICATE_CATEGORY: (e) => showInlineError(e.message || 'Duplicate category in submission.'),
+    NEW_VOTE_VIA_PATCH: (e) => showInlineError(e.message || 'Cannot add new categories when editing.')
+  };
+
+  // ===== Handle successful vote response =====
+  function handleVoteSuccess(data) {
+    HAS_VOTED = true;
+    showResults(data.results, data.tool_a_name, data.tool_b_name);
+    document.getElementById('submit-bar').style.display = 'none';
+    document.getElementById('post-vote-actions').style.display = 'block';
+    var nudge = document.getElementById('vote-history-nudge');
+    if (nudge) nudge.style.display = 'block';
+    if (data.edit_window_expires_at) {
+      startEditCountdown(new Date(data.edit_window_expires_at).getTime());
+    }
+  }
+
+  // ===== Submit =====
+  window.submitVotes = async function() {
+    const submitBtn = document.getElementById('submit-btn');
+    const spinner = document.getElementById('submit-spinner');
+
+    submitBtn.disabled = true;
+    spinner.style.display = 'inline-block';
+    clearInlineErrors();
+
+    const readTimeSec = Math.round((Date.now() - pageLoadTime) / 1000);
+    const votes = Object.entries(selections).map(([category, winner]) => ({ category, winner }));
+    const url = `/api/matchups/${MATCHUP_ID}/votes`;
+    const method = HAS_VOTED ? 'PATCH' : 'POST';
+    const reqBody = JSON.stringify({ votes, read_time_seconds: readTimeSec });
+    const headers = { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN };
+
+    try {
+      let resp = await submitWithRetry(url, { method, headers, body: reqBody });
+      let data = await resp.json();
+
+      if (data.success) {
+        handleVoteSuccess(data);
+        return;
+      }
+
+      // Error dispatch
+      const handler = data.error && ERROR_HANDLERS[data.error.code];
+      if (handler) {
+        const result = handler(data.error, data);
+        if (result === 'retry_patch') {
+          // Server says votes exist — auto-retry as PATCH
+          resp = await submitWithRetry(url, { method: 'PATCH', headers, body: reqBody });
+          data = await resp.json();
+          if (data.success) { handleVoteSuccess(data); return; }
+          showInlineError(data.error ? data.error.message : 'Failed to update votes.');
+        }
+        submitBtn.disabled = false;
+      } else {
+        console.error('Vote error:', data.error);
+        showInlineError((data.error && data.error.message) || 'An error occurred. Please try again.');
+        submitBtn.disabled = false;
+      }
+    } catch (err) {
+      console.error('Network error:', err);
+      showInlineError('Network error. Please check your connection and try again.');
+      submitBtn.disabled = false;
+    } finally {
+      spinner.style.display = 'none';
+    }
+  };
+
+  // ===== Results Reveal =====
+  function showResults(results, toolAName, toolBName) {
+    // Reveal tool names in headers
+    const leftName = POSITION_A_IS_LEFT ? toolAName : toolBName;
+    const rightName = POSITION_A_IS_LEFT ? toolBName : toolAName;
+
+    const headerNames = document.getElementById('header-tool-names');
+    if (headerNames) headerNames.textContent = `${leftName} vs ${rightName}`;
+    const toolLeft = document.getElementById('tool-name-left');
+    if (toolLeft) toolLeft.textContent = leftName;
+    const toolRight = document.getElementById('tool-name-right');
+    if (toolRight) toolRight.textContent = rightName;
+
+    document.body.classList.add('results-visible');
+
+    // Update mobile tabs
+    const tabs = document.querySelectorAll('.mobile-tab');
+    if (tabs.length >= 2) {
+      tabs[0].innerHTML = leftName;
+      tabs[1].innerHTML = rightName;
+    }
+
+    // Show result bars and hide vote buttons
+    document.querySelectorAll('.vote-card').forEach(card => {
+      const cat = card.dataset.category;
+      const r = results[cat];
+      if (!r) return;
+
+      const leftPct = POSITION_A_IS_LEFT ? r.tool_a_pct : r.tool_b_pct;
+      const rightPct = POSITION_A_IS_LEFT ? r.tool_b_pct : r.tool_a_pct;
+      const leftVotes = POSITION_A_IS_LEFT ? r.tool_a_votes : r.tool_b_votes;
+      const rightVotes = POSITION_A_IS_LEFT ? r.tool_b_votes : r.tool_a_votes;
+
+      // Hide vote buttons
+      card.querySelectorAll('.vote-btn').forEach(b => b.style.display = 'none');
+
+      // Show result display
+      const resultDiv = card.querySelector('.result-display');
+      if (resultDiv) {
+        resultDiv.style.display = 'block';
+        const barA = document.getElementById(`bar-a-${cat}`);
+        const barB = document.getElementById(`bar-b-${cat}`);
+        const pctA = document.getElementById(`pct-a-${cat}`);
+        const pctB = document.getElementById(`pct-b-${cat}`);
+
+        requestAnimationFrame(() => {
+          if (barA) barA.style.width = leftPct + '%';
+          if (barB) barB.style.width = rightPct + '%';
+        });
+
+        const winnerIsLeft = leftVotes > rightVotes;
+        const winnerIsRight = rightVotes > leftVotes;
+        if (pctA) pctA.innerHTML = (winnerIsLeft ? '<i class="bi bi-trophy-fill trophy-icon me-1"></i>' : '') +
+          `${leftName}: ${leftPct}% (${leftVotes})`;
+        if (pctB) pctB.innerHTML = (winnerIsRight ? '<i class="bi bi-trophy-fill trophy-icon me-1"></i>' : '') +
+          `${rightName}: ${rightPct}% (${rightVotes})`;
+        if (winnerIsLeft && pctA) pctA.classList.add('result-winner');
+        if (winnerIsRight && pctB) pctB.classList.add('result-winner');
+      }
+    });
+  }
+
+  // ===== Edit Window Countdown =====
+  function startEditCountdown(lockAtMs) {
+    const countdownEl = document.getElementById('edit-countdown');
+    function tick() {
+      const remaining = lockAtMs - Date.now();
+      if (remaining <= 0) {
+        if (countdownEl) countdownEl.textContent = 'Votes locked';
+        document.querySelectorAll('.vote-btn').forEach(b => { b.disabled = true; });
+        const submitBtn = document.getElementById('submit-btn');
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+      }
+      const min = Math.floor(remaining / 60000);
+      const sec = Math.floor((remaining % 60000) / 1000);
+      if (countdownEl) countdownEl.textContent = `Change votes for ${min}:${sec.toString().padStart(2, '0')}`;
+      requestAnimationFrame(tick);
+    }
+    tick();
+  }
+
+  if (HAS_VOTED && !VOTES_LOCKED && EARLIEST_VOTE_TIME) {
+    const lockAt = new Date(EARLIEST_VOTE_TIME).getTime() + VOTE_LOCK_MINUTES * 60 * 1000;
+    startEditCountdown(lockAt);
+  }
+
+  // ===== Mobile Tab Switching =====
+  window.switchMobileTab = function(side) {
+    document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.mobile-tab[data-side="${side}"]`).classList.add('active');
+    document.getElementById('col-left').classList.toggle('active-mobile', side === 'left');
+    document.getElementById('col-right').classList.toggle('active-mobile', side === 'right');
+  };
+
+  // ===== Synced Scrolling =====
+  let syncScroll = true;
+  const scrollL = document.getElementById('scroll-left');
+  const scrollR = document.getElementById('scroll-right');
+  let scrolling = false;
+
+  function syncHandler(source, target) {
+    if (!syncScroll || scrolling) return;
+    scrolling = true;
+    const pct = source.scrollTop / (source.scrollHeight - source.clientHeight || 1);
+    target.scrollTop = pct * (target.scrollHeight - target.clientHeight || 1);
+    requestAnimationFrame(() => { scrolling = false; });
+  }
+
+  if (scrollL && scrollR) {
+    scrollL.addEventListener('scroll', () => syncHandler(scrollL, scrollR));
+    scrollR.addEventListener('scroll', () => syncHandler(scrollR, scrollL));
+  }
+})();
+</script>
 {% endblock %}

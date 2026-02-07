@@ -3,10 +3,12 @@ Database Module
 Handles all database connections and operations
 """
 import os
+import time as _time
 import logging
 import psycopg2
 import psycopg2.extras
 from psycopg2.extras import RealDictCursor
+from datetime import datetime as _datetime
 from config import Config
 
 # Configure logging - never log sensitive data like passwords or connection strings
@@ -1614,239 +1616,1993 @@ def toggle_user_active(user_id, is_active):
         connection.close()
 
 
-# ============== AI Comparison Functions ==============
+# ============== Matchups & Votes ==============
 
-def get_posts_by_category_for_comparison(category):
-    """Get posts from different AI tools for the same category"""
+VOTE_CATEGORIES = ('writing_quality', 'accuracy', 'creativity', 'usefulness', 'overall')
+VOTE_LOCK_MINUTES = 5
+DAILY_VOTE_LIMIT = 50
+
+# Structured error codes for vote pipeline
+VOTE_ERROR_STATUS = {
+    'AUTH_REQUIRED': 401,
+    'PREMIUM_REQUIRED': 403,
+    'MATCHUP_NOT_FOUND': 404,
+    'MATCHUP_INACTIVE': 409,
+    'INVALID_PAYLOAD': 400,
+    'DUPLICATE_CATEGORY': 400,
+    'INVALID_CATEGORY': 400,
+    'INVALID_WINNER': 400,
+    'VOTE_LOCKED': 409,
+    'RATE_LIMITED': 429,
+    'EXISTING_VOTES_USE_PATCH': 409,
+    'NEW_VOTE_VIA_PATCH': 400,
+    'DUPLICATE_VOTE': 409,
+}
+
+
+def _make_vote_error(code, message=None, details=None):
+    """Build a structured error response dict for the vote pipeline."""
+    status_code = VOTE_ERROR_STATUS.get(code, 500)
+    return {
+        'success': False,
+        'status_code': status_code,
+        'error': {
+            'code': code,
+            'message': message or code.replace('_', ' ').title(),
+            'details': details or {}
+        }
+    }
+
+
+def _log_vote_event(cursor, event_type, user_id, matchup_id, categories=None,
+                    error_code=None, metadata=None):
+    """Append a row to the vote_events audit table (call within an existing transaction)."""
+    cursor.execute("""
+        INSERT INTO vote_events (event_type, user_id, matchup_id, categories,
+                                 error_code, metadata)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (event_type, user_id, matchup_id, categories,
+          error_code, psycopg2.extras.Json(metadata or {})))
+
+
+def get_user_vote_count_24h(user_id):
+    """Count votes cast by user in the last 24 hours (for rate limiting)."""
     connection = get_connection()
     if not connection:
-        return []
+        return 0
     try:
         with connection.cursor() as cursor:
-            # Get one post per tool for the given category
             cursor.execute("""
-                SELECT DISTINCT ON (p.tool_id)
-                    p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
-                    t.name as tool_name, t.slug as tool_slug
-                FROM Post p
-                LEFT JOIN AITool t ON p.tool_id = t.tool_id
-                WHERE p.Category = %s
-                ORDER BY p.tool_id, p.CreatedAt DESC
-            """, (category,))
-            return [
-                {
-                    'id': row[0],
-                    'title': row[1],
-                    'content': row[2],
-                    'category': row[3],
-                    'created_at': row[4],
-                    'tool_id': row[5],
-                    'tool_name': row[6],
-                    'tool_slug': row[7]
-                }
-                for row in cursor.fetchall()
-            ]
+                SELECT COUNT(*) FROM votes
+                WHERE user_id = %s
+                  AND voted_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+            """, (user_id,))
+            return cursor.fetchone()[0]
+    except Exception:
+        return 0
     finally:
         connection.close()
 
 
-def get_random_comparison_posts(limit=3):
-    """Get random posts from different AI tools for comparison"""
-    connection = get_connection()
-    if not connection:
-        return []
-    try:
-        with connection.cursor() as cursor:
-            # Get one random recent post per tool
-            cursor.execute("""
-                SELECT DISTINCT ON (p.tool_id)
-                    p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
-                    t.name as tool_name, t.slug as tool_slug
-                FROM Post p
-                LEFT JOIN AITool t ON p.tool_id = t.tool_id
-                WHERE p.CreatedAt >= CURRENT_DATE - INTERVAL '30 days'
-                ORDER BY p.tool_id, RANDOM()
-                LIMIT %s
-            """, (limit,))
-            return [
-                {
-                    'id': row[0],
-                    'title': row[1],
-                    'content': row[2],
-                    'category': row[3],
-                    'created_at': row[4],
-                    'tool_id': row[5],
-                    'tool_name': row[6],
-                    'tool_slug': row[7]
-                }
-                for row in cursor.fetchall()
-            ]
-    finally:
-        connection.close()
+def create_matchup(post_a_id, post_b_id, prompt_id=None):
+    """
+    Create a new matchup between two posts from different AI tools.
 
+    Enforces:
+    - Posts must exist and belong to different, active AI tools
+    - Canonical ordering (tool_a < tool_b by ID) applied automatically
+    - No duplicate matchup for the same post pair
 
-def create_comparison(topic, post_ids):
-    """Create a new comparison with selected posts"""
+    Returns matchup_id if successful, None on failure.
+    """
+    if post_a_id == post_b_id:
+        logger.warning("Cannot create matchup: same post for both sides")
+        return None
+
     connection = get_connection()
     if not connection:
         return None
     try:
         with connection.cursor() as cursor:
-            # Create comparison
-            cursor.execute(
-                "INSERT INTO Comparison (topic) VALUES (%s) RETURNING comparison_id",
-                (topic,)
-            )
-            comparison_id = cursor.fetchone()[0]
-            
-            # Add posts to comparison
-            for post_id in post_ids:
-                cursor.execute(
-                    "INSERT INTO ComparisonPost (comparison_id, post_id) VALUES (%s, %s)",
-                    (comparison_id, post_id)
-                )
-            
+            # Fetch both posts with their tool info
+            cursor.execute("""
+                SELECT p.postid, p.tool_id, t.status
+                FROM Post p
+                JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE p.postid IN (%s, %s)
+            """, (post_a_id, post_b_id))
+            rows = cursor.fetchall()
+
+            if len(rows) != 2:
+                logger.warning("Cannot create matchup: one or both posts not found")
+                return None
+
+            post_map = {row[0]: {'tool_id': row[1], 'status': row[2]} for row in rows}
+
+            tool_a_id = post_map[post_a_id]['tool_id']
+            tool_b_id = post_map[post_b_id]['tool_id']
+
+            if tool_a_id == tool_b_id:
+                logger.warning("Cannot create matchup: both posts from same tool")
+                return None
+
+            # Check both tools are active
+            for pid in [post_a_id, post_b_id]:
+                if post_map[pid]['status'] != 'active':
+                    logger.warning(f"Cannot create matchup: tool for post {pid} is not active")
+                    return None
+
+            # Canonical ordering: ensure tool_a < tool_b by ID
+            if tool_a_id < tool_b_id:
+                final_post_a, final_post_b = post_a_id, post_b_id
+                final_tool_a, final_tool_b = tool_a_id, tool_b_id
+            else:
+                final_post_a, final_post_b = post_b_id, post_a_id
+                final_tool_a, final_tool_b = tool_b_id, tool_a_id
+
+            import random
+            position_seed = random.randint(0, 2**31 - 1)
+
+            cursor.execute("""
+                INSERT INTO matchups (post_a_id, post_b_id, tool_a, tool_b, prompt_id, position_seed)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING matchup_id
+            """, (final_post_a, final_post_b, final_tool_a, final_tool_b, prompt_id, position_seed))
+
+            matchup_id = cursor.fetchone()[0]
             connection.commit()
-            return comparison_id
+            return matchup_id
     except Exception as e:
-        print(f"Error creating comparison: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+            logger.info(f"Matchup already exists for posts {post_a_id} and {post_b_id}")
+        else:
+            logger.error(f"Error creating matchup: {e}")
         return None
     finally:
         connection.close()
 
 
-def get_comparison_by_id(comparison_id):
-    """Get comparison details with posts"""
+def get_matchup(matchup_id):
+    """Get a matchup with full post and tool details"""
     connection = get_connection()
     if not connection:
         return None
     try:
         with connection.cursor() as cursor:
-            # Get comparison info
-            cursor.execute(
-                "SELECT comparison_id, topic, created_at FROM Comparison WHERE comparison_id = %s",
-                (comparison_id,)
-            )
+            cursor.execute("""
+                SELECT m.matchup_id, m.post_a_id, m.post_b_id, m.tool_a, m.tool_b,
+                       m.prompt_id, m.position_seed, m.status, m.created_at,
+                       pa.Title, pa.Content, pa.Category,
+                       pb.Title, pb.Content, pb.Category,
+                       ta.name, ta.slug, ta.icon_url,
+                       tb.name, tb.slug, tb.icon_url
+                FROM matchups m
+                JOIN Post pa ON m.post_a_id = pa.postid
+                JOIN Post pb ON m.post_b_id = pb.postid
+                JOIN AITool ta ON m.tool_a = ta.tool_id
+                JOIN AITool tb ON m.tool_b = tb.tool_id
+                WHERE m.matchup_id = %s
+            """, (matchup_id,))
             row = cursor.fetchone()
             if not row:
                 return None
-            
-            comparison = {
-                'id': row[0],
-                'topic': row[1],
-                'created_at': row[2],
-                'posts': []
+            return {
+                'matchup_id': row[0],
+                'post_a_id': row[1], 'post_b_id': row[2],
+                'tool_a': row[3], 'tool_b': row[4],
+                'prompt_id': row[5], 'position_seed': row[6],
+                'status': row[7], 'created_at': row[8],
+                'title_a': row[9], 'content_a': row[10], 'category_a': row[11],
+                'title_b': row[12], 'content_b': row[13], 'category_b': row[14],
+                'tool_a_name': row[15], 'tool_a_slug': row[16], 'tool_a_icon': row[17],
+                'tool_b_name': row[18], 'tool_b_slug': row[19], 'tool_b_icon': row[20]
             }
-            
-            # Get posts in comparison
-            cursor.execute("""
-                SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
-                       t.name as tool_name, t.slug as tool_slug
-                FROM ComparisonPost cp
-                JOIN Post p ON cp.post_id = p.postid
-                LEFT JOIN AITool t ON p.tool_id = t.tool_id
-                WHERE cp.comparison_id = %s
-            """, (comparison_id,))
-            
-            for row in cursor.fetchall():
-                comparison['posts'].append({
-                    'id': row[0],
-                    'title': row[1],
-                    'content': row[2],
-                    'category': row[3],
-                    'created_at': row[4],
-                    'tool_id': row[5],
-                    'tool_name': row[6],
-                    'tool_slug': row[7]
-                })
-            
-            return comparison
     finally:
         connection.close()
 
 
-def add_vote(comparison_id, user_id, post_id):
-    """Add or update a vote for a comparison"""
+def get_matchup_by_posts(post_a_id, post_b_id):
+    """Find an existing matchup between two posts (order-independent)"""
     connection = get_connection()
     if not connection:
-        return False
+        return None
     try:
         with connection.cursor() as cursor:
-            # Upsert vote
             cursor.execute("""
-                INSERT INTO Vote (comparison_id, user_id, post_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (comparison_id, user_id) 
-                DO UPDATE SET post_id = %s, created_at = CURRENT_TIMESTAMP
-            """, (comparison_id, user_id, post_id, post_id))
-            connection.commit()
-            return True
-    except Exception as e:
-        print(f"Error adding vote: {e}")
-        return False
+                SELECT matchup_id FROM matchups
+                WHERE (post_a_id = %s AND post_b_id = %s)
+                   OR (post_a_id = %s AND post_b_id = %s)
+            """, (post_a_id, post_b_id, post_b_id, post_a_id))
+            row = cursor.fetchone()
+            if row:
+                return get_matchup(row[0])
+            return None
     finally:
         connection.close()
 
 
-def get_vote_counts(comparison_id):
-    """Get vote counts for each post in a comparison"""
+def get_active_matchups_for_post(post_id):
+    """Get all active matchups that include this post, with opposing tool info."""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT m.matchup_id,
+                       CASE WHEN m.post_a_id = %s THEN tb.name ELSE ta.name END,
+                       CASE WHEN m.post_a_id = %s THEN tb.slug ELSE ta.slug END
+                FROM matchups m
+                JOIN AITool ta ON m.tool_a = ta.tool_id
+                JOIN AITool tb ON m.tool_b = tb.tool_id
+                WHERE (m.post_a_id = %s OR m.post_b_id = %s)
+                  AND m.status = 'active'
+                ORDER BY m.created_at DESC
+            """, (post_id, post_id, post_id, post_id))
+            return [
+                {
+                    'matchup_id': row[0],
+                    'opposing_tool_name': row[1],
+                    'opposing_tool_slug': row[2]
+                }
+                for row in cursor.fetchall()
+            ]
+    except Exception:
+        return []
+    finally:
+        connection.close()
+
+
+def cast_vote(user_id, matchup_id, category, winner_tool_id):
+    """
+    Cast or update a vote on a matchup.
+
+    Enforces:
+    - User must have premium subscription
+    - Matchup must exist and be active
+    - Category must be valid
+    - winner_tool_id must be one of the two tools in the matchup
+    - Cannot change a locked vote
+
+    Returns dict with 'success', 'vote_id', and 'error' keys.
+    """
+    if category not in VOTE_CATEGORIES:
+        return {'success': False, 'vote_id': None, 'error': f'Invalid category: {category}'}
+
+    if not is_user_premium(user_id):
+        return {'success': False, 'vote_id': None, 'error': 'Premium subscription required to vote'}
+
+    connection = get_connection()
+    if not connection:
+        return {'success': False, 'vote_id': None, 'error': 'Database connection failed'}
+    try:
+        with connection.cursor() as cursor:
+            # Get matchup details and validate
+            cursor.execute("""
+                SELECT matchup_id, tool_a, tool_b, position_seed, status
+                FROM matchups WHERE matchup_id = %s
+            """, (matchup_id,))
+            matchup = cursor.fetchone()
+
+            if not matchup:
+                return {'success': False, 'vote_id': None, 'error': 'Matchup not found'}
+
+            if matchup[4] != 'active':
+                return {'success': False, 'vote_id': None, 'error': 'Matchup is not active'}
+
+            tool_a, tool_b = matchup[1], matchup[2]
+            position_seed = matchup[3]
+
+            if winner_tool_id not in (tool_a, tool_b):
+                return {'success': False, 'vote_id': None, 'error': 'Winner must be one of the matchup tools'}
+
+            # Check if existing vote is locked
+            cursor.execute("""
+                SELECT vote_id, locked FROM votes
+                WHERE user_id = %s AND matchup_id = %s AND category = %s
+            """, (user_id, matchup_id, category))
+            existing = cursor.fetchone()
+
+            if existing and existing[1]:
+                return {'success': False, 'vote_id': existing[0], 'error': 'Vote is locked and cannot be changed'}
+
+            # Determine position_a_was_left from position_seed and user_id
+            position_a_was_left = ((position_seed + user_id) % 2 == 0)
+
+            # Upsert vote — only updates if not locked
+            cursor.execute("""
+                INSERT INTO votes (user_id, matchup_id, category, winner_tool, voted_at, position_a_was_left)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
+                ON CONFLICT (user_id, matchup_id, category)
+                DO UPDATE SET winner_tool = EXCLUDED.winner_tool,
+                              voted_at = CURRENT_TIMESTAMP,
+                              position_a_was_left = EXCLUDED.position_a_was_left
+                WHERE votes.locked = FALSE
+                RETURNING vote_id
+            """, (user_id, matchup_id, category, winner_tool_id, position_a_was_left))
+
+            result = cursor.fetchone()
+            if not result:
+                return {'success': False, 'vote_id': None, 'error': 'Vote is locked and cannot be changed'}
+
+            connection.commit()
+            return {'success': True, 'vote_id': result[0], 'error': None}
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error casting vote: {e}")
+        return {'success': False, 'vote_id': None, 'error': 'An unexpected error occurred'}
+    finally:
+        connection.close()
+
+
+def get_user_votes_for_matchup(user_id, matchup_id):
+    """Get all of a user's votes for a specific matchup"""
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT vote_id, category, winner_tool, voted_at, locked, position_a_was_left
+                FROM votes
+                WHERE user_id = %s AND matchup_id = %s
+                ORDER BY category
+            """, (user_id, matchup_id))
+            return [
+                {
+                    'vote_id': row[0],
+                    'category': row[1],
+                    'winner_tool': row[2],
+                    'voted_at': row[3],
+                    'locked': row[4],
+                    'position_a_was_left': row[5]
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
+def get_matchup_vote_counts(matchup_id):
+    """Get vote counts per category and tool for a matchup"""
     connection = get_connection()
     if not connection:
         return {}
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT post_id, COUNT(*) as votes
-                FROM Vote
-                WHERE comparison_id = %s
-                GROUP BY post_id
-            """, (comparison_id,))
-            return {row[0]: row[1] for row in cursor.fetchall()}
+                SELECT category, winner_tool, COUNT(*) as count
+                FROM votes
+                WHERE matchup_id = %s
+                GROUP BY category, winner_tool
+                ORDER BY category, winner_tool
+            """, (matchup_id,))
+            results = {}
+            for row in cursor.fetchall():
+                cat = row[0]
+                if cat not in results:
+                    results[cat] = {}
+                results[cat][row[1]] = row[2]
+            return results
     finally:
         connection.close()
 
 
-def get_user_vote(comparison_id, user_id):
-    """Get the user's vote for a comparison"""
+def get_matchup_total_votes(matchup_id):
+    """Get total number of individual votes cast on a matchup (across all categories/users)"""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM votes WHERE matchup_id = %s", (matchup_id,))
+            return cursor.fetchone()[0]
+    finally:
+        connection.close()
+
+
+def batch_submit_votes(user_id, matchup_id, votes, position_a_is_left, metadata=None):
+    """
+    Atomically submit a batch of votes for a matchup.
+
+    All votes succeed or all fail. Validates every constraint before inserting.
+
+    Args:
+        user_id: int
+        matchup_id: int
+        votes: list of {'category': str, 'winner_tool': int}
+        position_a_is_left: bool
+        metadata: optional dict for audit log (ip, read_time_seconds, etc.)
+
+    Returns dict with 'success', 'status_code', and either 'vote_ids'+'edit_window_expires_at'
+    or 'error' with 'code', 'message', 'details'.
+    """
+    # --- Fast validation (no DB) ---
+    if not votes or len(votes) > len(VOTE_CATEGORIES):
+        return _make_vote_error('INVALID_PAYLOAD',
+                                f'Submit between 1 and {len(VOTE_CATEGORIES)} category votes.')
+
+    categories = [v['category'] for v in votes]
+    seen = set()
+    for cat in categories:
+        if cat in seen:
+            return _make_vote_error('DUPLICATE_CATEGORY',
+                                    f'Duplicate category in submission: {cat}.',
+                                    {'category': cat})
+        seen.add(cat)
+
+    for v in votes:
+        if v['category'] not in VOTE_CATEGORIES:
+            return _make_vote_error('INVALID_CATEGORY',
+                                    f"Invalid category: {v['category']}.",
+                                    {'category': v['category']})
+        if v.get('winner_tool') is None:
+            return _make_vote_error('INVALID_WINNER',
+                                    'Winner must be one of the tools in this matchup.')
+
+    # --- DB transaction ---
+    connection = get_connection()
+    if not connection:
+        return _make_vote_error('MATCHUP_NOT_FOUND', 'Database connection failed.')
+    try:
+        with connection.cursor() as cursor:
+            # Premium check (inline, same connection)
+            cursor.execute("""
+                SELECT EXISTS(
+                    SELECT 1 FROM UserSubscription us
+                    JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                    WHERE us.user_id = %s
+                      AND us.status IN ('active', 'trialing')
+                      AND sp.name != 'free'
+                      AND (us.current_period_end IS NULL
+                           OR us.current_period_end > CURRENT_TIMESTAMP)
+                )
+            """, (user_id,))
+            if not cursor.fetchone()[0]:
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                'PREMIUM_REQUIRED', metadata)
+                connection.commit()
+                return _make_vote_error('PREMIUM_REQUIRED',
+                                        'Voting requires a premium subscription.')
+
+            # Matchup validation
+            cursor.execute("""
+                SELECT matchup_id, tool_a, tool_b, status
+                FROM matchups WHERE matchup_id = %s
+            """, (matchup_id,))
+            matchup = cursor.fetchone()
+            if not matchup:
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, None, cat_str,
+                                'MATCHUP_NOT_FOUND', metadata)
+                connection.commit()
+                return _make_vote_error('MATCHUP_NOT_FOUND', 'Matchup not found.')
+
+            tool_a, tool_b = matchup[1], matchup[2]
+            if matchup[3] != 'active':
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                'MATCHUP_INACTIVE', metadata)
+                connection.commit()
+                return _make_vote_error('MATCHUP_INACTIVE',
+                                        'This matchup is no longer accepting votes.')
+
+            # Winner validation
+            for v in votes:
+                if v['winner_tool'] not in (tool_a, tool_b):
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'INVALID_WINNER', metadata)
+                    connection.commit()
+                    return _make_vote_error('INVALID_WINNER',
+                                            'Winner must be one of the tools in this matchup.',
+                                            {'category': v['category'],
+                                             'provided_tool_id': v['winner_tool']})
+
+            # Rate limit check (reads from votes table)
+            cursor.execute("""
+                SELECT COUNT(*) FROM votes
+                WHERE user_id = %s
+                  AND voted_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+            """, (user_id,))
+            current_count = cursor.fetchone()[0]
+            if current_count + len(votes) > DAILY_VOTE_LIMIT:
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                'RATE_LIMITED', metadata)
+                connection.commit()
+                return _make_vote_error('RATE_LIMITED',
+                                        'Daily vote limit reached. Try again tomorrow.',
+                                        {'limit': DAILY_VOTE_LIMIT,
+                                         'current': current_count,
+                                         'requested': len(votes)})
+
+            # Check existing votes (with row lock)
+            cursor.execute("""
+                SELECT vote_id, category, winner_tool, locked
+                FROM votes
+                WHERE user_id = %s AND matchup_id = %s AND category = ANY(%s)
+                FOR UPDATE
+            """, (user_id, matchup_id, categories))
+            existing = {row[1]: {'vote_id': row[0], 'winner_tool': row[2], 'locked': row[3]}
+                        for row in cursor.fetchall()}
+
+            if existing:
+                # Check for locked votes
+                for cat, ev in existing.items():
+                    if ev['locked']:
+                        cat_str = ','.join(categories)
+                        _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                        'VOTE_LOCKED', metadata)
+                        connection.commit()
+                        return _make_vote_error('VOTE_LOCKED',
+                                                'One or more votes are locked and cannot be changed.',
+                                                {'locked_category': cat})
+
+                # Build a map of submitted winners by category
+                submitted = {v['category']: v['winner_tool'] for v in votes}
+
+                # Check if any existing votes differ
+                has_different = False
+                for cat, ev in existing.items():
+                    if cat in submitted and submitted[cat] != ev['winner_tool']:
+                        has_different = True
+                        break
+
+                if has_different:
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'EXISTING_VOTES_USE_PATCH', metadata)
+                    connection.commit()
+                    return _make_vote_error('EXISTING_VOTES_USE_PATCH',
+                                            'Votes already exist for this matchup. Use PATCH to edit.')
+
+                # All existing match → check if all submitted already exist (full idempotent)
+                all_idempotent = all(cat in existing for cat in submitted)
+                if all_idempotent:
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'submit', user_id, matchup_id, cat_str,
+                                    None, metadata)
+                    connection.commit()
+                    return {
+                        'success': True,
+                        'status_code': 200,
+                        'vote_ids': [existing[cat]['vote_id'] for cat in submitted],
+                        'edit_window_expires_at': None
+                    }
+
+            # Insert new votes (only categories not already existing)
+            vote_ids = []
+            new_categories = []
+            for v in votes:
+                if v['category'] in existing:
+                    vote_ids.append(existing[v['category']]['vote_id'])
+                    continue
+                cursor.execute("""
+                    INSERT INTO votes (user_id, matchup_id, category, winner_tool,
+                                       voted_at, position_a_was_left)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
+                    RETURNING vote_id
+                """, (user_id, matchup_id, v['category'], v['winner_tool'],
+                      position_a_is_left))
+                vote_ids.append(cursor.fetchone()[0])
+                new_categories.append(v['category'])
+
+            # Get the edit window expiry
+            cursor.execute("SELECT CURRENT_TIMESTAMP + INTERVAL '1 minute' * %s",
+                           (VOTE_LOCK_MINUTES,))
+            expires_at = cursor.fetchone()[0]
+
+            cat_str = ','.join(categories)
+            _log_vote_event(cursor, 'submit', user_id, matchup_id, cat_str,
+                            None, metadata)
+            connection.commit()
+
+            return {
+                'success': True,
+                'status_code': 201,
+                'vote_ids': vote_ids,
+                'edit_window_expires_at': expires_at.isoformat()
+            }
+
+    except psycopg2.errors.UniqueViolation:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return _make_vote_error('DUPLICATE_VOTE',
+                                'You have already voted on this category for this matchup.')
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error in batch_submit_votes: {e}")
+        return _make_vote_error('INVALID_PAYLOAD', 'An unexpected error occurred.')
+    finally:
+        connection.close()
+
+
+def batch_edit_votes(user_id, matchup_id, votes, position_a_is_left, metadata=None):
+    """
+    Atomically edit existing votes within the lock window.
+
+    All edits succeed or all fail. Rejects new categories (must use POST).
+    Real-time lock check: expires votes on the spot if > 5 minutes old.
+
+    Args:
+        user_id: int
+        matchup_id: int
+        votes: list of {'category': str, 'winner_tool': int}
+        position_a_is_left: bool
+        metadata: optional dict for audit log
+
+    Returns same shape as batch_submit_votes.
+    """
+    # --- Fast validation (no DB) ---
+    if not votes or len(votes) > len(VOTE_CATEGORIES):
+        return _make_vote_error('INVALID_PAYLOAD',
+                                f'Submit between 1 and {len(VOTE_CATEGORIES)} category votes.')
+
+    categories = [v['category'] for v in votes]
+    seen = set()
+    for cat in categories:
+        if cat in seen:
+            return _make_vote_error('DUPLICATE_CATEGORY',
+                                    f'Duplicate category in submission: {cat}.',
+                                    {'category': cat})
+        seen.add(cat)
+
+    for v in votes:
+        if v['category'] not in VOTE_CATEGORIES:
+            return _make_vote_error('INVALID_CATEGORY',
+                                    f"Invalid category: {v['category']}.",
+                                    {'category': v['category']})
+        if v.get('winner_tool') is None:
+            return _make_vote_error('INVALID_WINNER',
+                                    'Winner must be one of the tools in this matchup.')
+
+    # --- DB transaction ---
+    connection = get_connection()
+    if not connection:
+        return _make_vote_error('MATCHUP_NOT_FOUND', 'Database connection failed.')
+    try:
+        with connection.cursor() as cursor:
+            # Premium check (inline)
+            cursor.execute("""
+                SELECT EXISTS(
+                    SELECT 1 FROM UserSubscription us
+                    JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                    WHERE us.user_id = %s
+                      AND us.status IN ('active', 'trialing')
+                      AND sp.name != 'free'
+                      AND (us.current_period_end IS NULL
+                           OR us.current_period_end > CURRENT_TIMESTAMP)
+                )
+            """, (user_id,))
+            if not cursor.fetchone()[0]:
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                'PREMIUM_REQUIRED', metadata)
+                connection.commit()
+                return _make_vote_error('PREMIUM_REQUIRED',
+                                        'Voting requires a premium subscription.')
+
+            # Matchup validation
+            cursor.execute("""
+                SELECT matchup_id, tool_a, tool_b, status
+                FROM matchups WHERE matchup_id = %s
+            """, (matchup_id,))
+            matchup = cursor.fetchone()
+            if not matchup:
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, None, cat_str,
+                                'MATCHUP_NOT_FOUND', metadata)
+                connection.commit()
+                return _make_vote_error('MATCHUP_NOT_FOUND', 'Matchup not found.')
+
+            tool_a, tool_b = matchup[1], matchup[2]
+            if matchup[3] != 'active':
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                'MATCHUP_INACTIVE', metadata)
+                connection.commit()
+                return _make_vote_error('MATCHUP_INACTIVE',
+                                        'This matchup is no longer accepting votes.')
+
+            # Winner validation
+            for v in votes:
+                if v['winner_tool'] not in (tool_a, tool_b):
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'INVALID_WINNER', metadata)
+                    connection.commit()
+                    return _make_vote_error('INVALID_WINNER',
+                                            'Winner must be one of the tools in this matchup.',
+                                            {'category': v['category'],
+                                             'provided_tool_id': v['winner_tool']})
+
+            # No rate limit check for edits (they're free)
+
+            # Fetch existing votes with row lock + elapsed seconds computed in SQL
+            cursor.execute("""
+                SELECT vote_id, category, winner_tool, locked,
+                       EXTRACT(EPOCH FROM (LOCALTIMESTAMP - voted_at)) as elapsed_sec
+                FROM votes
+                WHERE user_id = %s AND matchup_id = %s AND category = ANY(%s)
+                FOR UPDATE
+            """, (user_id, matchup_id, categories))
+            existing = {row[1]: {'vote_id': row[0], 'winner_tool': row[2],
+                                 'locked': row[3], 'elapsed_sec': row[4]}
+                        for row in cursor.fetchall()}
+
+            # All submitted categories must already have votes
+            for cat in categories:
+                if cat not in existing:
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'NEW_VOTE_VIA_PATCH', metadata)
+                    connection.commit()
+                    return _make_vote_error('NEW_VOTE_VIA_PATCH',
+                                            'Cannot add new categories via PATCH. Use POST for initial votes.',
+                                            {'category': cat})
+
+            # Real-time lock check + opportunistic locking
+            for cat, ev in existing.items():
+                if ev['locked'] or ev['elapsed_sec'] > VOTE_LOCK_MINUTES * 60:
+                    # Opportunistically lock if not already
+                    if not ev['locked']:
+                        cursor.execute(
+                            "UPDATE votes SET locked = TRUE WHERE vote_id = %s",
+                            (ev['vote_id'],))
+                        _log_vote_event(cursor, 'lock', user_id, matchup_id, cat,
+                                        None, metadata)
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'VOTE_LOCKED', metadata)
+                    connection.commit()
+                    return _make_vote_error('VOTE_LOCKED',
+                                            'One or more votes are locked and cannot be changed.',
+                                            {'locked_category': cat})
+
+            # Apply edits
+            submitted = {v['category']: v['winner_tool'] for v in votes}
+            vote_ids = []
+            edited_categories = []
+
+            all_same = all(submitted[cat] == existing[cat]['winner_tool'] for cat in categories)
+            if all_same:
+                # Idempotent no-op
+                cat_str = ','.join(categories)
+                _log_vote_event(cursor, 'edit', user_id, matchup_id, cat_str,
+                                None, metadata)
+                connection.commit()
+                return {
+                    'success': True,
+                    'status_code': 200,
+                    'vote_ids': [existing[cat]['vote_id'] for cat in categories],
+                    'edit_window_expires_at': None
+                }
+
+            for cat in categories:
+                ev = existing[cat]
+                if submitted[cat] == ev['winner_tool']:
+                    vote_ids.append(ev['vote_id'])
+                    continue
+                # Update the vote
+                cursor.execute("""
+                    UPDATE votes
+                    SET winner_tool = %s, voted_at = CURRENT_TIMESTAMP,
+                        position_a_was_left = %s
+                    WHERE vote_id = %s AND locked = FALSE
+                    RETURNING vote_id
+                """, (submitted[cat], position_a_is_left, ev['vote_id']))
+                result = cursor.fetchone()
+                if not result:
+                    # Race condition: locked between our check and update
+                    connection.rollback()
+                    return _make_vote_error('VOTE_LOCKED',
+                                            'Vote was locked during edit.',
+                                            {'category': cat})
+                vote_ids.append(result[0])
+                edited_categories.append(cat)
+
+            # Get new edit window expiry
+            cursor.execute("SELECT CURRENT_TIMESTAMP + INTERVAL '1 minute' * %s",
+                           (VOTE_LOCK_MINUTES,))
+            expires_at = cursor.fetchone()[0]
+
+            cat_str = ','.join(categories)
+            _log_vote_event(cursor, 'edit', user_id, matchup_id, cat_str,
+                            None, metadata)
+            connection.commit()
+
+            return {
+                'success': True,
+                'status_code': 200,
+                'vote_ids': vote_ids,
+                'edit_window_expires_at': expires_at.isoformat()
+            }
+
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error in batch_edit_votes: {e}")
+        return _make_vote_error('INVALID_PAYLOAD', 'An unexpected error occurred.')
+    finally:
+        connection.close()
+
+
+def lock_expired_votes():
+    """
+    Lock votes older than VOTE_LOCK_MINUTES.
+    Intended to be called by a background/cron job.
+
+    Returns number of votes locked, or 0 on failure.
+    """
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE votes
+                SET locked = TRUE
+                WHERE locked = FALSE
+                  AND voted_at < CURRENT_TIMESTAMP - INTERVAL '1 minute' * %s
+            """, (VOTE_LOCK_MINUTES,))
+            count = cursor.rowcount
+            connection.commit()
+            return count
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error locking expired votes: {e}")
+        return 0
+    finally:
+        connection.close()
+
+
+# ============== Leaderboard Cache & Aggregation ==============
+
+class _LeaderboardCache:
+    """Simple in-memory cache with TTL for leaderboard API responses."""
+
+    def __init__(self, ttl_seconds=300):
+        self._store = {}
+        self._ttl = ttl_seconds
+
+    def get(self, key):
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        if _time.time() - entry['ts'] > self._ttl:
+            del self._store[key]
+            return None
+        return entry['data'], _time.time() - entry['ts']
+
+    def set(self, key, data):
+        self._store[key] = {'data': data, 'ts': _time.time()}
+
+    def invalidate_all(self):
+        self._store.clear()
+
+
+_leaderboard_cache = _LeaderboardCache(ttl_seconds=300)
+
+
+def recompute_tool_stats():
+    """
+    Recompute the tool_stats summary table from raw vote data.
+
+    Uses a single optimized query with conditional aggregation for
+    all-time, 7-day, and previous-7-day windows. Upserts results.
+    Returns {'tools_updated': int, 'duration_ms': int} or None on error.
+    """
+    start = _time.time()
+    log_id = log_cron_start('recompute_tool_stats')
+
+    connection = get_connection()
+    if not connection:
+        log_cron_failure(log_id, 'Could not get database connection')
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # Single query: CROSS JOIN tools × categories, LEFT JOIN aggregated votes
+            cursor.execute("""
+                WITH tool_categories AS (
+                    SELECT t.tool_id, t.status, cat.category
+                    FROM AITool t
+                    CROSS JOIN (VALUES
+                        ('writing_quality'),('accuracy'),('creativity'),
+                        ('usefulness'),('overall')
+                    ) AS cat(category)
+                    WHERE t.status IN ('active', 'pending')
+                ),
+                vote_agg AS (
+                    SELECT
+                        t.tool_id,
+                        v.category,
+                        COUNT(*) AS total_votes,
+                        SUM(CASE WHEN v.winner_tool = t.tool_id THEN 1 ELSE 0 END) AS total_wins,
+                        SUM(CASE WHEN v.voted_at > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) AS votes_last_7d,
+                        SUM(CASE WHEN v.voted_at > NOW() - INTERVAL '7 days'
+                                      AND v.winner_tool = t.tool_id THEN 1 ELSE 0 END) AS wins_last_7d,
+                        SUM(CASE WHEN v.voted_at BETWEEN NOW() - INTERVAL '14 days'
+                                      AND NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) AS votes_prev_7d,
+                        SUM(CASE WHEN v.voted_at BETWEEN NOW() - INTERVAL '14 days'
+                                      AND NOW() - INTERVAL '7 days'
+                                      AND v.winner_tool = t.tool_id THEN 1 ELSE 0 END) AS wins_prev_7d
+                    FROM AITool t
+                    JOIN matchups m ON (m.tool_a = t.tool_id OR m.tool_b = t.tool_id)
+                    JOIN votes v ON v.matchup_id = m.matchup_id
+                    WHERE t.status = 'active'
+                      AND v.locked = TRUE
+                      AND m.status = 'active'
+                    GROUP BY t.tool_id, v.category
+                )
+                SELECT tc.tool_id, tc.status, tc.category,
+                       COALESCE(va.total_votes, 0),
+                       COALESCE(va.total_wins, 0),
+                       COALESCE(va.votes_last_7d, 0),
+                       COALESCE(va.wins_last_7d, 0),
+                       COALESCE(va.votes_prev_7d, 0),
+                       COALESCE(va.wins_prev_7d, 0)
+                FROM tool_categories tc
+                LEFT JOIN vote_agg va ON tc.tool_id = va.tool_id AND tc.category = va.category
+            """)
+            rows = cursor.fetchall()
+
+            tools_updated = 0
+            for row in rows:
+                (tool_id, status, category,
+                 total_votes, total_wins,
+                 votes_last_7d, wins_last_7d,
+                 votes_prev_7d, wins_prev_7d) = row
+
+                win_rate = round(total_wins / total_votes, 4) if total_votes > 0 else None
+                win_rate_7d = round(wins_last_7d / votes_last_7d, 4) if votes_last_7d > 0 else None
+                win_rate_prev_7d = round(wins_prev_7d / votes_prev_7d, 4) if votes_prev_7d > 0 else None
+
+                # Trend logic
+                if votes_last_7d < 5 or votes_prev_7d < 5:
+                    trend = 'stable'
+                elif win_rate_7d is not None and win_rate_prev_7d is not None:
+                    delta = win_rate_7d - win_rate_prev_7d
+                    if delta > 0.05:
+                        trend = 'up'
+                    elif delta < -0.05:
+                        trend = 'down'
+                    else:
+                        trend = 'stable'
+                else:
+                    trend = 'stable'
+
+                cursor.execute("""
+                    INSERT INTO tool_stats
+                        (tool_id, category, total_votes, total_wins, win_rate,
+                         wins_last_7d, votes_last_7d, win_rate_7d,
+                         wins_prev_7d, votes_prev_7d, win_rate_prev_7d,
+                         trend, computed_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (tool_id, category) DO UPDATE SET
+                        total_votes = EXCLUDED.total_votes,
+                        total_wins = EXCLUDED.total_wins,
+                        win_rate = EXCLUDED.win_rate,
+                        wins_last_7d = EXCLUDED.wins_last_7d,
+                        votes_last_7d = EXCLUDED.votes_last_7d,
+                        win_rate_7d = EXCLUDED.win_rate_7d,
+                        wins_prev_7d = EXCLUDED.wins_prev_7d,
+                        votes_prev_7d = EXCLUDED.votes_prev_7d,
+                        win_rate_prev_7d = EXCLUDED.win_rate_prev_7d,
+                        trend = EXCLUDED.trend,
+                        computed_at = EXCLUDED.computed_at
+                """, (tool_id, category, total_votes, total_wins, win_rate,
+                      wins_last_7d, votes_last_7d, win_rate_7d,
+                      wins_prev_7d, votes_prev_7d, win_rate_prev_7d,
+                      trend))
+                tools_updated += 1
+
+            connection.commit()
+
+        duration_ms = int((_time.time() - start) * 1000)
+        _leaderboard_cache.invalidate_all()
+        log_cron_complete(log_id, details={'tools_updated': tools_updated, 'duration_ms': duration_ms})
+        return {'tools_updated': tools_updated, 'duration_ms': duration_ms}
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error recomputing tool stats: {e}")
+        log_cron_failure(log_id, str(e))
+        return None
+    finally:
+        connection.close()
+
+
+def get_tool_stats_for_leaderboard(category, min_votes=30):
+    """
+    Get tool stats for the leaderboard, split into above/below threshold.
+
+    Returns (above_threshold_list, below_threshold_list).
+    Each item is a dict with tool_id, name, slug, status, total_votes,
+    total_wins, win_rate, votes_last_7d, win_rate_7d, trend, computed_at.
+    """
+    connection = get_connection()
+    if not connection:
+        return [], []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT ts.tool_id, t.name, t.slug, t.status,
+                       ts.total_votes, ts.total_wins, ts.win_rate,
+                       ts.votes_last_7d, ts.win_rate_7d,
+                       ts.wins_last_7d, ts.votes_prev_7d, ts.win_rate_prev_7d,
+                       ts.trend, ts.computed_at
+                FROM tool_stats ts
+                JOIN AITool t ON ts.tool_id = t.tool_id
+                WHERE ts.category = %s
+                ORDER BY ts.win_rate DESC NULLS LAST, ts.total_votes DESC
+            """, (category,))
+            rows = cursor.fetchall()
+
+        above = []
+        below = []
+        for row in rows:
+            item = {
+                'tool_id': row[0],
+                'name': row[1],
+                'slug': row[2],
+                'status': row[3],
+                'total_votes': row[4],
+                'total_wins': row[5],
+                'win_rate': float(row[6]) if row[6] is not None else 0.0,
+                'votes_last_7d': row[7],
+                'win_rate_7d': float(row[8]) if row[8] is not None else 0.0,
+                'wins_last_7d': row[9],
+                'votes_prev_7d': row[10],
+                'win_rate_prev_7d': float(row[11]) if row[11] is not None else 0.0,
+                'trend': row[12],
+                'computed_at': row[13].isoformat() if row[13] else None,
+            }
+            if item['total_votes'] >= min_votes and item['status'] == 'active':
+                above.append(item)
+            else:
+                below.append(item)
+        return above, below
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting tool stats for leaderboard: {e}")
+        return [], []
+    finally:
+        connection.close()
+
+
+def get_tool_category_breakdown(tool_id):
+    """
+    Get all 5 category stats for a single tool.
+    Returns {category: {'win_rate': float, 'trend': str}}.
+    """
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT category, win_rate, trend
+                FROM tool_stats
+                WHERE tool_id = %s
+            """, (tool_id,))
+            rows = cursor.fetchall()
+        return {
+            row[0]: {
+                'win_rate': float(row[1]) if row[1] is not None else 0.0,
+                'trend': row[2],
+            }
+            for row in rows
+        }
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting tool category breakdown: {e}")
+        return {}
+    finally:
+        connection.close()
+
+
+def get_tool_rank_badges(min_votes=30):
+    """
+    Find which tools are #1 in each category (with enough votes).
+    Returns {tool_id: [{'category': str, 'category_display': str}]}.
+    """
+    display_names = {
+        'writing_quality': 'Writing Quality',
+        'accuracy': 'Accuracy',
+        'creativity': 'Creativity',
+        'usefulness': 'Usefulness',
+        'overall': 'Overall',
+    }
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT ON (ts.category) ts.category, ts.tool_id
+                FROM tool_stats ts
+                JOIN AITool t ON ts.tool_id = t.tool_id
+                WHERE t.status = 'active'
+                  AND ts.total_votes >= %s
+                  AND ts.win_rate IS NOT NULL
+                ORDER BY ts.category, ts.win_rate DESC, ts.total_votes DESC
+            """, (min_votes,))
+            rows = cursor.fetchall()
+
+        badges = {}
+        for row in rows:
+            cat, tool_id = row[0], row[1]
+            if tool_id not in badges:
+                badges[tool_id] = []
+            badges[tool_id].append({
+                'category': cat,
+                'category_display': display_names.get(cat, cat),
+            })
+        return badges
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting tool rank badges: {e}")
+        return {}
+    finally:
+        connection.close()
+
+
+# ============== Head-to-Head Stats ==============
+
+def recompute_h2h_stats():
+    """
+    Recompute the h2h_stats summary table from raw vote data.
+
+    Generates all pair/category combos, aggregates locked votes from active
+    matchups, computes win rates, trends, and confidence, then upserts.
+    Returns {'pairs_updated': int, 'duration_ms': int} or None on error.
+    """
+    start = _time.time()
+    log_id = log_cron_start('recompute_h2h_stats')
+
+    connection = get_connection()
+    if not connection:
+        log_cron_failure(log_id, 'Could not get database connection')
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # Get all active+pending tools
+            cursor.execute("""
+                SELECT tool_id, status FROM AITool
+                WHERE status IN ('active', 'pending')
+                ORDER BY tool_id
+            """)
+            tools = cursor.fetchall()
+
+            # Generate all pair/category combos (canonical: tool_a_id < tool_b_id)
+            all_combos = {}
+            for i, (tid_a, status_a) in enumerate(tools):
+                for tid_b, status_b in tools[i + 1:]:
+                    has_pending = (status_a == 'pending' or status_b == 'pending')
+                    for cat in VOTE_CATEGORIES:
+                        all_combos[(tid_a, tid_b, cat)] = {
+                            'has_pending': has_pending,
+                            'total_votes': 0, 'tool_a_wins': 0, 'tool_b_wins': 0,
+                            'total_votes_7d': 0, 'tool_a_wins_7d': 0, 'tool_b_wins_7d': 0,
+                            'total_votes_prev_7d': 0, 'tool_a_wins_prev_7d': 0, 'tool_b_wins_prev_7d': 0,
+                        }
+
+            # Aggregate vote data
+            cursor.execute("""
+                SELECT
+                    m.tool_a AS tool_a_id, m.tool_b AS tool_b_id, v.category,
+                    COUNT(*) AS total_votes,
+                    SUM(CASE WHEN v.winner_tool = m.tool_a THEN 1 ELSE 0 END) AS tool_a_wins,
+                    SUM(CASE WHEN v.winner_tool = m.tool_b THEN 1 ELSE 0 END) AS tool_b_wins,
+                    SUM(CASE WHEN v.voted_at > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) AS total_votes_7d,
+                    SUM(CASE WHEN v.voted_at > NOW() - INTERVAL '7 days'
+                                  AND v.winner_tool = m.tool_a THEN 1 ELSE 0 END) AS tool_a_wins_7d,
+                    SUM(CASE WHEN v.voted_at > NOW() - INTERVAL '7 days'
+                                  AND v.winner_tool = m.tool_b THEN 1 ELSE 0 END) AS tool_b_wins_7d,
+                    SUM(CASE WHEN v.voted_at BETWEEN NOW() - INTERVAL '14 days'
+                                  AND NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) AS total_votes_prev_7d,
+                    SUM(CASE WHEN v.voted_at BETWEEN NOW() - INTERVAL '14 days'
+                                  AND NOW() - INTERVAL '7 days'
+                                  AND v.winner_tool = m.tool_a THEN 1 ELSE 0 END) AS tool_a_wins_prev_7d,
+                    SUM(CASE WHEN v.voted_at BETWEEN NOW() - INTERVAL '14 days'
+                                  AND NOW() - INTERVAL '7 days'
+                                  AND v.winner_tool = m.tool_b THEN 1 ELSE 0 END) AS tool_b_wins_prev_7d
+                FROM matchups m
+                JOIN votes v ON v.matchup_id = m.matchup_id
+                WHERE m.status = 'active' AND v.locked = TRUE
+                GROUP BY m.tool_a, m.tool_b, v.category
+            """)
+            for row in cursor.fetchall():
+                key = (row[0], row[1], row[2])
+                if key in all_combos:
+                    all_combos[key].update({
+                        'total_votes': row[3], 'tool_a_wins': row[4], 'tool_b_wins': row[5],
+                        'total_votes_7d': row[6], 'tool_a_wins_7d': row[7], 'tool_b_wins_7d': row[8],
+                        'total_votes_prev_7d': row[9], 'tool_a_wins_prev_7d': row[10], 'tool_b_wins_prev_7d': row[11],
+                    })
+
+            # Upsert all combos
+            pairs_updated = 0
+            for (tid_a, tid_b, cat), d in all_combos.items():
+                tv = d['total_votes']
+                a_wr = round(d['tool_a_wins'] / tv, 4) if tv > 0 else None
+                b_wr = round(d['tool_b_wins'] / tv, 4) if tv > 0 else None
+
+                # Confidence
+                if tv >= 100:
+                    confidence = 'high'
+                elif tv >= 30:
+                    confidence = 'medium'
+                else:
+                    confidence = 'low'
+
+                # Trends
+                if d['has_pending']:
+                    trend_a = 'new'
+                    trend_b = 'new'
+                else:
+                    tv_7d = d['total_votes_7d']
+                    tv_prev = d['total_votes_prev_7d']
+                    # Tool A trend
+                    if tv_7d < 5 or tv_prev < 5:
+                        trend_a = 'stable'
+                        trend_b = 'stable'
+                    else:
+                        a_wr_7d = d['tool_a_wins_7d'] / tv_7d if tv_7d > 0 else 0
+                        a_wr_prev = d['tool_a_wins_prev_7d'] / tv_prev if tv_prev > 0 else 0
+                        delta_a = a_wr_7d - a_wr_prev
+                        if delta_a > 0.05:
+                            trend_a = 'up'
+                        elif delta_a < -0.05:
+                            trend_a = 'down'
+                        else:
+                            trend_a = 'stable'
+                        # Tool B trend is opposite
+                        if delta_a < -0.05:
+                            trend_b = 'up'
+                        elif delta_a > 0.05:
+                            trend_b = 'down'
+                        else:
+                            trend_b = 'stable'
+
+                cursor.execute("""
+                    INSERT INTO h2h_stats
+                        (tool_a_id, tool_b_id, category, total_votes,
+                         tool_a_wins, tool_b_wins, tool_a_win_rate, tool_b_win_rate,
+                         total_votes_7d, tool_a_wins_7d, tool_b_wins_7d,
+                         total_votes_prev_7d, tool_a_wins_prev_7d, tool_b_wins_prev_7d,
+                         trend_tool_a, trend_tool_b, confidence, computed_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (tool_a_id, tool_b_id, category) DO UPDATE SET
+                        total_votes = EXCLUDED.total_votes,
+                        tool_a_wins = EXCLUDED.tool_a_wins,
+                        tool_b_wins = EXCLUDED.tool_b_wins,
+                        tool_a_win_rate = EXCLUDED.tool_a_win_rate,
+                        tool_b_win_rate = EXCLUDED.tool_b_win_rate,
+                        total_votes_7d = EXCLUDED.total_votes_7d,
+                        tool_a_wins_7d = EXCLUDED.tool_a_wins_7d,
+                        tool_b_wins_7d = EXCLUDED.tool_b_wins_7d,
+                        total_votes_prev_7d = EXCLUDED.total_votes_prev_7d,
+                        tool_a_wins_prev_7d = EXCLUDED.tool_a_wins_prev_7d,
+                        tool_b_wins_prev_7d = EXCLUDED.tool_b_wins_prev_7d,
+                        trend_tool_a = EXCLUDED.trend_tool_a,
+                        trend_tool_b = EXCLUDED.trend_tool_b,
+                        confidence = EXCLUDED.confidence,
+                        computed_at = EXCLUDED.computed_at
+                """, (tid_a, tid_b, cat, tv,
+                      d['tool_a_wins'], d['tool_b_wins'], a_wr, b_wr,
+                      d['total_votes_7d'], d['tool_a_wins_7d'], d['tool_b_wins_7d'],
+                      d['total_votes_prev_7d'], d['tool_a_wins_prev_7d'], d['tool_b_wins_prev_7d'],
+                      trend_a, trend_b, confidence))
+                pairs_updated += 1
+
+            connection.commit()
+
+        duration_ms = int((_time.time() - start) * 1000)
+        _leaderboard_cache.invalidate_all()
+        log_cron_complete(log_id, details={'pairs_updated': pairs_updated, 'duration_ms': duration_ms})
+        return {'pairs_updated': pairs_updated, 'duration_ms': duration_ms}
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error recomputing h2h stats: {e}")
+        log_cron_failure(log_id, str(e))
+        return None
+    finally:
+        connection.close()
+
+
+def get_h2h_matrix(category):
+    """
+    Get the full head-to-head matrix data for a category.
+
+    Returns {
+        'tools': [{'tool_id', 'name', 'slug', 'status'}, ...],
+        'cells': [{'tool_a_id', 'tool_b_id', 'tool_a_win_rate', ...}, ...],
+        'computed_at': str
+    }
+    """
     connection = get_connection()
     if not connection:
         return None
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT post_id FROM Vote WHERE comparison_id = %s AND user_id = %s",
-                (comparison_id, user_id)
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
+            # Get tools ordered by slug
+            cursor.execute("""
+                SELECT tool_id, name, slug, status
+                FROM AITool
+                WHERE status IN ('active', 'pending')
+                ORDER BY slug
+            """)
+            tools = []
+            for row in cursor.fetchall():
+                tools.append({
+                    'tool_id': row[0], 'name': row[1],
+                    'slug': row[2], 'status': row[3],
+                })
+
+            # Get h2h data for this category
+            cursor.execute("""
+                SELECT h.tool_a_id, h.tool_b_id,
+                       h.tool_a_win_rate, h.tool_b_win_rate,
+                       h.total_votes, h.confidence,
+                       h.trend_tool_a, h.trend_tool_b,
+                       h.computed_at,
+                       ta.status AS status_a, tb.status AS status_b
+                FROM h2h_stats h
+                JOIN AITool ta ON h.tool_a_id = ta.tool_id
+                JOIN AITool tb ON h.tool_b_id = tb.tool_id
+                WHERE h.category = %s
+                ORDER BY h.tool_a_id, h.tool_b_id
+            """, (category,))
+
+            cells = []
+            computed_at = None
+            for row in cursor.fetchall():
+                cell = {
+                    'tool_a_id': row[0], 'tool_b_id': row[1],
+                    'tool_a_win_rate': float(row[2]) if row[2] is not None else None,
+                    'tool_b_win_rate': float(row[3]) if row[3] is not None else None,
+                    'total_votes': row[4], 'confidence': row[5],
+                    'trend_tool_a': row[6], 'trend_tool_b': row[7],
+                }
+                if row[9] == 'pending' or row[10] == 'pending':
+                    cell['pending'] = True
+                if row[8] and computed_at is None:
+                    computed_at = row[8].isoformat() if hasattr(row[8], 'isoformat') else str(row[8])
+                cells.append(cell)
+
+        return {
+            'tools': tools,
+            'cells': cells,
+            'computed_at': computed_at,
+        }
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting h2h matrix: {e}")
+        return None
     finally:
         connection.close()
 
 
-def get_recent_comparisons(limit=10):
-    """Get recent comparisons"""
+def get_h2h_pair_detail(tool_a_id, tool_b_id):
+    """
+    Get detailed head-to-head data for a specific tool pair.
+
+    Returns {
+        'categories': [...],
+        'recent_matchups': [...],
+        'total_matchups': int
+    }
+    """
     connection = get_connection()
     if not connection:
-        return []
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # All 5 category rows
+            cursor.execute("""
+                SELECT category, tool_a_win_rate, tool_b_win_rate,
+                       total_votes, confidence, trend_tool_a, trend_tool_b
+                FROM h2h_stats
+                WHERE tool_a_id = %s AND tool_b_id = %s
+                ORDER BY category
+            """, (tool_a_id, tool_b_id))
+            categories = []
+            for row in cursor.fetchall():
+                categories.append({
+                    'category': row[0],
+                    'tool_a_win_rate': float(row[1]) if row[1] is not None else None,
+                    'tool_b_win_rate': float(row[2]) if row[2] is not None else None,
+                    'total_votes': row[3],
+                    'confidence': row[4],
+                    'trend_tool_a': row[5],
+                    'trend_tool_b': row[6],
+                })
+
+            # Total matchups count
+            cursor.execute("""
+                SELECT COUNT(*) FROM matchups
+                WHERE tool_a = %s AND tool_b = %s AND status = 'active'
+            """, (tool_a_id, tool_b_id))
+            total_matchups = cursor.fetchone()[0]
+
+            # 5 most recent active matchups
+            cursor.execute("""
+                SELECT m.matchup_id, m.created_at,
+                       (SELECT COUNT(*) FROM votes v WHERE v.matchup_id = m.matchup_id AND v.locked = TRUE) AS vote_count
+                FROM matchups m
+                WHERE m.tool_a = %s AND m.tool_b = %s AND m.status = 'active'
+                ORDER BY m.created_at DESC
+                LIMIT 5
+            """, (tool_a_id, tool_b_id))
+            recent_matchups = []
+            for row in cursor.fetchall():
+                recent_matchups.append({
+                    'matchup_id': row[0],
+                    'created_at': row[1].isoformat() if hasattr(row[1], 'isoformat') else str(row[1]),
+                    'total_votes': row[2],
+                })
+
+        return {
+            'categories': categories,
+            'recent_matchups': recent_matchups,
+            'total_matchups': total_matchups,
+        }
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting h2h pair detail: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+# ============== Personal Voting History (Phase 2, Step 3) ==============
+
+_user_stats_cache = _LeaderboardCache(ttl_seconds=300)
+
+
+def recompute_user_vote_stats(user_id):
+    """
+    Recompute the user_vote_stats row for a single user.
+
+    Called after vote submission and by cron for stale rows.
+    Returns {'success': True} or None on error.
+    """
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # 1. Totals
+            cursor.execute("""
+                SELECT COUNT(*), COUNT(DISTINCT matchup_id)
+                FROM votes WHERE user_id = %s AND locked = TRUE
+            """, (user_id,))
+            total_votes, total_matchups = cursor.fetchone()
+
+            # 2. Majority agreement
+            # For each (matchup_id, category), find community majority winner,
+            # then count how often this user's vote matches.
+            cursor.execute("""
+                WITH community AS (
+                    SELECT matchup_id, category, winner_tool,
+                           COUNT(*) AS cnt,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY matchup_id, category
+                               ORDER BY COUNT(*) DESC
+                           ) AS rn
+                    FROM votes
+                    WHERE locked = TRUE
+                    GROUP BY matchup_id, category, winner_tool
+                ),
+                majority AS (
+                    SELECT matchup_id, category, winner_tool
+                    FROM community WHERE rn = 1
+                ),
+                user_votes AS (
+                    SELECT matchup_id, category, winner_tool
+                    FROM votes
+                    WHERE user_id = %s AND locked = TRUE
+                )
+                SELECT COUNT(*) FROM user_votes uv
+                JOIN majority m ON uv.matchup_id = m.matchup_id
+                    AND uv.category = m.category
+                    AND uv.winner_tool = m.winner_tool
+            """, (user_id,))
+            majority_agreements = cursor.fetchone()[0]
+
+            majority_rate = None
+            if total_votes > 0:
+                majority_rate = round(majority_agreements / total_votes, 4)
+
+            # 3. Favorite tool
+            cursor.execute("""
+                SELECT winner_tool, COUNT(*) AS cnt
+                FROM votes WHERE user_id = %s AND locked = TRUE
+                GROUP BY winner_tool ORDER BY cnt DESC LIMIT 1
+            """, (user_id,))
+            fav_row = cursor.fetchone()
+            favorite_tool_id = fav_row[0] if fav_row else None
+            favorite_tool_count = fav_row[1] if fav_row else 0
+
+            # 4. Category most voted
+            cursor.execute("""
+                SELECT category, COUNT(*) AS cnt
+                FROM votes WHERE user_id = %s AND locked = TRUE
+                GROUP BY category ORDER BY cnt DESC LIMIT 1
+            """, (user_id,))
+            cat_row = cursor.fetchone()
+            category_most_voted = cat_row[0] if cat_row else None
+
+            # 5. Streaks — get distinct vote dates
+            cursor.execute("""
+                SELECT DISTINCT DATE(voted_at) AS vote_date
+                FROM votes WHERE user_id = %s AND locked = TRUE
+                ORDER BY vote_date DESC
+            """, (user_id,))
+            dates = [r[0] for r in cursor.fetchall()]
+
+            current_streak = 0
+            longest_streak = 0
+            if dates:
+                from datetime import date as _date, timedelta as _td
+                today = _date.today()
+                # Current streak: starts if most recent vote is today or yesterday
+                if dates[0] >= today - _td(days=1):
+                    current_streak = 1
+                    for i in range(1, len(dates)):
+                        if dates[i] == dates[i - 1] - _td(days=1):
+                            current_streak += 1
+                        else:
+                            break
+
+                # Longest streak
+                run = 1
+                for i in range(1, len(dates)):
+                    if dates[i] == dates[i - 1] - _td(days=1):
+                        run += 1
+                    else:
+                        if run > longest_streak:
+                            longest_streak = run
+                        run = 1
+                if run > longest_streak:
+                    longest_streak = run
+
+            # 6. Last voted
+            cursor.execute("""
+                SELECT MAX(voted_at) FROM votes
+                WHERE user_id = %s AND locked = TRUE
+            """, (user_id,))
+            last_voted_at = cursor.fetchone()[0]
+
+            # 7. Upsert
+            cursor.execute("""
+                INSERT INTO user_vote_stats (
+                    user_id, total_votes_cast, total_matchups_voted,
+                    majority_agreements, majority_agreement_rate,
+                    favorite_tool_id, favorite_tool_vote_count,
+                    category_most_voted, current_streak, longest_streak,
+                    last_voted_at, computed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    total_votes_cast = EXCLUDED.total_votes_cast,
+                    total_matchups_voted = EXCLUDED.total_matchups_voted,
+                    majority_agreements = EXCLUDED.majority_agreements,
+                    majority_agreement_rate = EXCLUDED.majority_agreement_rate,
+                    favorite_tool_id = EXCLUDED.favorite_tool_id,
+                    favorite_tool_vote_count = EXCLUDED.favorite_tool_vote_count,
+                    category_most_voted = EXCLUDED.category_most_voted,
+                    current_streak = EXCLUDED.current_streak,
+                    longest_streak = EXCLUDED.longest_streak,
+                    last_voted_at = EXCLUDED.last_voted_at,
+                    computed_at = CURRENT_TIMESTAMP
+            """, (user_id, total_votes, total_matchups,
+                  majority_agreements, majority_rate,
+                  favorite_tool_id, favorite_tool_count,
+                  category_most_voted, current_streak, longest_streak,
+                  last_voted_at))
+            connection.commit()
+
+            # 8. Invalidate cache for this user
+            _user_stats_cache._store.pop(('user_stats', user_id), None)
+
+            return {'success': True}
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error recomputing user vote stats for user {user_id}: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def get_user_vote_stats(user_id):
+    """
+    Get cached user vote stats with category and tool distributions.
+
+    Returns full stats dict or None if no stats exist.
+    """
+    cached = _user_stats_cache.get(('user_stats', user_id))
+    if cached is not None:
+        data, age = cached
+        data['cached'] = True
+        data['cache_age_seconds'] = round(age, 1)
+        return data
+
+    connection = get_connection()
+    if not connection:
+        return None
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT c.comparison_id, c.topic, c.created_at, COUNT(cp.id) as post_count
-                FROM Comparison c
-                LEFT JOIN ComparisonPost cp ON c.comparison_id = cp.comparison_id
-                GROUP BY c.comparison_id
-                ORDER BY c.created_at DESC
-                LIMIT %s
-            """, (limit,))
-            return [
+                SELECT uvs.total_votes_cast, uvs.total_matchups_voted,
+                       uvs.majority_agreements, uvs.majority_agreement_rate,
+                       uvs.favorite_tool_id, uvs.favorite_tool_vote_count,
+                       uvs.category_most_voted, uvs.current_streak,
+                       uvs.longest_streak, uvs.last_voted_at, uvs.computed_at,
+                       t.name AS favorite_tool_name, t.slug AS favorite_tool_slug
+                FROM user_vote_stats uvs
+                LEFT JOIN AITool t ON uvs.favorite_tool_id = t.tool_id
+                WHERE uvs.user_id = %s
+            """, (user_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            stats = {
+                'success': True,
+                'total_votes_cast': row[0],
+                'total_matchups_voted': row[1],
+                'majority_agreements': row[2],
+                'majority_agreement_rate': float(row[3]) if row[3] is not None else None,
+                'favorite_tool': {
+                    'tool_id': row[4],
+                    'name': row[11],
+                    'slug': row[12],
+                    'vote_count': row[5],
+                } if row[4] else None,
+                'category_most_voted': row[6],
+                'current_streak': row[7],
+                'longest_streak': row[8],
+                'last_voted_at': row[9].isoformat() if row[9] else None,
+                'computed_at': row[10].isoformat() if row[10] else None,
+                'cached': False,
+            }
+
+            # Category distribution
+            cursor.execute("""
+                SELECT category, COUNT(*) AS cnt
+                FROM votes WHERE user_id = %s AND locked = TRUE
+                GROUP BY category ORDER BY cnt DESC
+            """, (user_id,))
+            stats['category_distribution'] = [
+                {'category': r[0], 'count': r[1]} for r in cursor.fetchall()
+            ]
+
+            # Tool distribution (tools the user voted FOR)
+            cursor.execute("""
+                SELECT t.name, t.slug, COUNT(*) AS cnt
+                FROM votes v
+                JOIN AITool t ON v.winner_tool = t.tool_id
+                WHERE v.user_id = %s AND v.locked = TRUE
+                GROUP BY t.name, t.slug ORDER BY cnt DESC
+            """, (user_id,))
+            stats['tool_distribution'] = [
+                {'name': r[0], 'slug': r[1], 'count': r[2]} for r in cursor.fetchall()
+            ]
+
+            _user_stats_cache.set(('user_stats', user_id), stats)
+            return stats
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting user vote stats: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def get_user_vote_history(user_id, page=1, limit=20, tool_slug=None,
+                          category=None, alignment=None, sort='newest'):
+    """
+    Get paginated, filterable vote history for a user.
+
+    Returns {'votes': [...], 'total': int, 'page': int, 'pages': int} or None.
+    """
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            # Build WHERE clauses
+            conditions = ["v.user_id = %s", "v.locked = TRUE"]
+            params = [user_id]
+
+            if category:
+                conditions.append("v.category = %s")
+                params.append(category)
+
+            if tool_slug:
+                # Filter by tool involved in the matchup (either side)
+                conditions.append("""
+                    (ta.slug = %s OR tb.slug = %s)
+                """)
+                params.extend([tool_slug, tool_slug])
+
+            where_clause = " AND ".join(conditions)
+            order = "v.voted_at DESC" if sort == 'newest' else "v.voted_at ASC"
+
+            # Main query
+            base_query = """
+                FROM votes v
+                JOIN matchups m ON v.matchup_id = m.matchup_id
+                JOIN AITool ta ON m.tool_a = ta.tool_id
+                JOIN AITool tb ON m.tool_b = tb.tool_id
+                JOIN AITool tw ON v.winner_tool = tw.tool_id
+                WHERE {where}
+            """.format(where=where_clause)
+
+            # Get total count (before alignment filter)
+            cursor.execute(f"SELECT COUNT(*) {base_query}", params)
+            total_before_alignment = cursor.fetchone()[0]
+
+            # Fetch all matching votes (we need them for alignment annotation)
+            offset = (page - 1) * limit
+            cursor.execute(f"""
+                SELECT v.vote_id, v.matchup_id, v.category, v.winner_tool,
+                       v.voted_at,
+                       m.tool_a, m.tool_b,
+                       ta.name AS tool_a_name, ta.slug AS tool_a_slug,
+                       tb.name AS tool_b_name, tb.slug AS tool_b_slug,
+                       tw.name AS winner_name, tw.slug AS winner_slug
+                {base_query}
+                ORDER BY {order}
+            """, params)
+            all_votes = cursor.fetchall()
+
+            # Get community majority for each (matchup_id, category) in the result set
+            matchup_cats = set()
+            for row in all_votes:
+                matchup_cats.add((row[1], row[2]))  # matchup_id, category
+
+            community_majority = {}
+            if matchup_cats:
+                # Batch fetch
+                for mc_id, mc_cat in matchup_cats:
+                    cursor.execute("""
+                        SELECT winner_tool, COUNT(*) AS cnt
+                        FROM votes
+                        WHERE matchup_id = %s AND category = %s AND locked = TRUE
+                        GROUP BY winner_tool ORDER BY cnt DESC LIMIT 1
+                    """, (mc_id, mc_cat))
+                    maj_row = cursor.fetchone()
+                    if maj_row:
+                        community_majority[(mc_id, mc_cat)] = maj_row[0]
+
+            # Also get community vote counts per (matchup_id, category)
+            community_counts = {}
+            if matchup_cats:
+                for mc_id, mc_cat in matchup_cats:
+                    cursor.execute("""
+                        SELECT winner_tool, COUNT(*) AS cnt
+                        FROM votes
+                        WHERE matchup_id = %s AND category = %s AND locked = TRUE
+                        GROUP BY winner_tool
+                    """, (mc_id, mc_cat))
+                    counts = {}
+                    total_community = 0
+                    for r in cursor.fetchall():
+                        counts[r[0]] = r[1]
+                        total_community += r[1]
+                    community_counts[(mc_id, mc_cat)] = {
+                        'counts': counts, 'total': total_community
+                    }
+
+            # Annotate votes
+            annotated = []
+            for row in all_votes:
+                matchup_id = row[1]
+                cat = row[2]
+                winner_tool = row[3]
+
+                maj_winner = community_majority.get((matchup_id, cat))
+                user_aligned = (winner_tool == maj_winner) if maj_winner else True
+
+                cc = community_counts.get((matchup_id, cat), {'counts': {}, 'total': 0})
+                tool_a_id = row[5]
+                tool_b_id = row[6]
+                tool_a_votes = cc['counts'].get(tool_a_id, 0)
+                tool_b_votes = cc['counts'].get(tool_b_id, 0)
+                total_cv = cc['total']
+                tool_a_pct = round(tool_a_votes / total_cv * 100, 1) if total_cv > 0 else 0
+                tool_b_pct = round(tool_b_votes / total_cv * 100, 1) if total_cv > 0 else 0
+
+                annotated.append({
+                    'vote_id': row[0],
+                    'matchup_id': matchup_id,
+                    'category': cat,
+                    'winner_tool_id': winner_tool,
+                    'winner_name': row[11],
+                    'winner_slug': row[12],
+                    'voted_at': row[4].isoformat() if row[4] else None,
+                    'tool_a': {'id': tool_a_id, 'name': row[7], 'slug': row[8]},
+                    'tool_b': {'id': tool_b_id, 'name': row[9], 'slug': row[10]},
+                    'community': {
+                        'tool_a_votes': tool_a_votes,
+                        'tool_b_votes': tool_b_votes,
+                        'tool_a_pct': tool_a_pct,
+                        'tool_b_pct': tool_b_pct,
+                        'total_votes': total_cv,
+                    },
+                    'user_aligned': user_aligned,
+                })
+
+            # Apply alignment filter if specified
+            if alignment == 'majority':
+                annotated = [v for v in annotated if v['user_aligned']]
+            elif alignment == 'minority':
+                annotated = [v for v in annotated if not v['user_aligned']]
+
+            total = len(annotated) if alignment else total_before_alignment
+            # Paginate
+            if alignment:
+                page_votes = annotated[(page - 1) * limit: page * limit]
+            else:
+                page_votes = annotated[offset: offset + limit]
+
+            pages = max(1, (total + limit - 1) // limit)
+
+            return {
+                'success': True,
+                'votes': page_votes,
+                'total': total,
+                'page': page,
+                'pages': pages,
+            }
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error getting user vote history: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def recompute_stale_user_stats():
+    """
+    Cron function: find users with votes newer than their last computation
+    and recompute their stats.
+
+    Returns {'users_updated': int, 'duration_ms': int} or None on error.
+    """
+    start = _time.time()
+    log_id = log_cron_start('recompute_user_vote_stats')
+
+    connection = get_connection()
+    if not connection:
+        log_cron_failure(log_id, 'Could not get database connection')
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT v.user_id FROM votes v
+                LEFT JOIN user_vote_stats uvs ON v.user_id = uvs.user_id
+                WHERE uvs.computed_at IS NULL OR v.voted_at > uvs.computed_at
+            """)
+            stale_users = [r[0] for r in cursor.fetchall()]
+        connection.close()
+
+        updated = 0
+        for uid in stale_users:
+            result = recompute_user_vote_stats(uid)
+            if result:
+                updated += 1
+
+        duration_ms = round((_time.time() - start) * 1000)
+        log_cron_complete(log_id, details={
+            'users_updated': updated,
+            'duration_ms': duration_ms,
+        })
+        return {'users_updated': updated, 'duration_ms': duration_ms}
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        log_cron_failure(log_id, str(e))
+        logger.error(f"Error recomputing stale user stats: {e}")
+        return None
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def get_active_matchups(page=1, per_page=12):
+    """Get paginated active matchups with tool info"""
+    connection = get_connection()
+    if not connection:
+        return [], 0
+    try:
+        offset = (page - 1) * per_page
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM matchups WHERE status = 'active'")
+            total = cursor.fetchone()[0]
+
+            cursor.execute("""
+                SELECT m.matchup_id, m.post_a_id, m.post_b_id,
+                       m.tool_a, m.tool_b, m.status, m.created_at,
+                       ta.name, ta.slug,
+                       tb.name, tb.slug,
+                       pa.Title, pb.Title
+                FROM matchups m
+                JOIN AITool ta ON m.tool_a = ta.tool_id
+                JOIN AITool tb ON m.tool_b = tb.tool_id
+                JOIN Post pa ON m.post_a_id = pa.postid
+                JOIN Post pb ON m.post_b_id = pb.postid
+                WHERE m.status = 'active'
+                ORDER BY m.created_at DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            matchups = [
                 {
-                    'id': row[0],
-                    'topic': row[1],
-                    'created_at': row[2],
-                    'post_count': row[3]
+                    'matchup_id': row[0],
+                    'post_a_id': row[1], 'post_b_id': row[2],
+                    'tool_a': row[3], 'tool_b': row[4],
+                    'status': row[5], 'created_at': row[6],
+                    'tool_a_name': row[7], 'tool_a_slug': row[8],
+                    'tool_b_name': row[9], 'tool_b_slug': row[10],
+                    'title_a': row[11], 'title_b': row[12]
                 }
                 for row in cursor.fetchall()
             ]
+            return matchups, total
     finally:
         connection.close()
 

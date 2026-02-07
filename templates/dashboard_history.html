@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+
+{% block title %}My Voting History - AI Blog{% endblock %}
+{% block description %}Your personal voting history, stats, streaks, and community alignment.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .stat-card { text-align: center; padding: 1rem; border-radius: 8px; background: #f8f9fa; }
+  .stat-card .stat-value { font-size: 1.5rem; font-weight: 700; }
+  .stat-card .stat-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+  .agree-high { color: #198754; }
+  .agree-mid { color: #fd7e14; }
+  .agree-low { color: #dc3545; }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .milestone-badge { width: 72px; text-align: center; transition: transform 0.2s; }
+  .milestone-badge:hover { transform: scale(1.1); }
+  .milestone-badge .badge-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; margin: 0 auto 4px; }
+  .milestone-badge .badge-label { font-size: 0.65rem; color: #495057; line-height: 1.2; }
+  .milestone-badge.earned .badge-icon { background: linear-gradient(135deg, #ffd700, #ffb300); color: #5d4600; }
+  .milestone-badge.unearned .badge-icon { background: #e9ecef; color: #adb5bd; }
+  .milestone-badge.unearned .badge-label { color: #adb5bd; }
+  @keyframes badge-pop { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
+  .milestone-badge.new-badge .badge-icon { animation: badge-pop 0.5s ease forwards; }
+  .vote-card { border-left: 4px solid #e9ecef; transition: border-color 0.2s; }
+  .vote-card:hover { border-left-color: var(--bs-primary); }
+  .vote-card .community-bar { height: 20px; border-radius: 4px; overflow: hidden; display: flex; }
+  .vote-card .bar-a { background: var(--bs-primary); transition: width 0.5s ease; }
+  .vote-card .bar-b { background: #6c757d; transition: width 0.5s ease; }
+  .align-badge-agree { background-color: #d1e7dd; color: #0f5132; }
+  .align-badge-disagree { background-color: #fff3cd; color: #664d03; }
+  .cat-badge-overall { background: #e2e3e5; color: #41464b; }
+  .cat-badge-writing_quality { background: #cfe2ff; color: #084298; }
+  .cat-badge-accuracy { background: #d1e7dd; color: #0f5132; }
+  .cat-badge-creativity { background: #f8d7da; color: #842029; }
+  .cat-badge-usefulness { background: #fff3cd; color: #664d03; }
+  .filter-bar .form-select { font-size: 0.85rem; }
+  .skeleton-stat { height: 60px; border-radius: 8px; background: #e9ecef; animation: skeleton-pulse 1.5s ease-in-out infinite; }
+  @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .vote-skeleton { height: 120px; border-radius: 8px; background: #e9ecef; animation: skeleton-pulse 1.5s ease-in-out infinite; margin-bottom: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-4">
+  <div class="container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+      <div>
+        <h1 class="h2 fw-bold mb-1">Compare & Vote Dashboard</h1>
+        <p class="text-muted mb-0">Your personal voting history and insights</p>
+      </div>
+    </div>
+
+    <!-- Dashboard Page Tabs -->
+    <ul class="nav nav-tabs mb-4">
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('dashboard') }}">
+          <i class="bi bi-bar-chart me-1"></i>Overview
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link active" href="{{ url_for('dashboard_history') }}">
+          <i class="bi bi-clock-history me-1"></i>My Votes
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link disabled" href="#">
+          <i class="bi bi-graph-up me-1"></i>Trends
+          <span class="badge bg-secondary ms-1" style="font-size:0.6rem;">Soon</span>
+        </a>
+      </li>
+    </ul>
+
+    <!-- Stats Summary Strip -->
+    <div id="stats-strip">
+      <div class="row g-3 mb-4" id="stats-skeleton">
+        {% for i in range(5) %}
+        <div class="col-6 col-md"><div class="skeleton-stat"></div></div>
+        {% endfor %}
+      </div>
+      <div class="row g-3 mb-4" id="stats-content" style="display:none;"></div>
+    </div>
+
+    <!-- Milestone Badges -->
+    <div class="card border-0 shadow-sm mb-4" id="badges-section" style="display:none;">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-award me-1"></i>Milestones</h6>
+        <div class="badge-row" id="badges-row"></div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="card border-0 shadow-sm mb-4 filter-bar">
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+          <div class="col-6 col-md-3">
+            <select class="form-select form-select-sm" id="filter-tool">
+              <option value="">All Tools</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <select class="form-select form-select-sm" id="filter-category">
+              <option value="">All Categories</option>
+              <option value="overall">Overall</option>
+              <option value="writing_quality">Writing Quality</option>
+              <option value="accuracy">Accuracy</option>
+              <option value="creativity">Creativity</option>
+              <option value="usefulness">Usefulness</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <select class="form-select form-select-sm" id="filter-alignment">
+              <option value="">All Alignment</option>
+              <option value="majority">With Majority</option>
+              <option value="minority">Against Majority</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <select class="form-select form-select-sm" id="filter-sort">
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vote History Feed -->
+    <div id="history-skeleton">
+      {% for i in range(3) %}
+      <div class="vote-skeleton"></div>
+      {% endfor %}
+    </div>
+
+    <div id="history-content" style="display:none;"></div>
+
+    <!-- Empty State -->
+    <div id="history-empty" style="display:none;" class="text-center py-5">
+      <i class="bi bi-ballot text-muted" style="font-size: 3rem;"></i>
+      <h5 class="mt-3">No votes yet</h5>
+      <p class="text-muted">Your voting history will appear here once you start comparing AI tools.</p>
+      <a href="{{ url_for('compare_page') }}" class="btn btn-primary">
+        <i class="bi bi-arrow-left-right me-1"></i>Compare Your First Matchup
+      </a>
+    </div>
+
+    <!-- Load More -->
+    <div id="load-more-wrapper" style="display:none;" class="text-center mt-3 mb-4">
+      <button class="btn btn-outline-primary" id="load-more-btn">
+        <i class="bi bi-arrow-down-circle me-1"></i>Load More
+      </button>
+      <p class="text-muted small mt-2" id="showing-count"></p>
+    </div>
+
+    <!-- Error State -->
+    <div id="history-error" style="display:none;" class="text-center py-5">
+      <i class="bi bi-exclamation-triangle text-warning" style="font-size: 2rem;"></i>
+      <p class="mt-2 text-muted">Failed to load your voting history.</p>
+      <button class="btn btn-outline-primary btn-sm" onclick="location.reload()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Retry
+      </button>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  var currentPage = 1;
+  var allVotes = [];
+  var totalVotes = 0;
+  var totalPages = 1;
+  var statsData = null;
+
+  // ===== Badge Definitions =====
+  var BADGES = [
+    { id: 'first_vote', label: 'First Vote', icon: 'bi-hand-thumbs-up', check: function(s) { return s.total_votes_cast >= 1; }, progress: function(s) { return Math.min(s.total_votes_cast, 1) + '/1'; } },
+    { id: 'double_digits', label: 'Double Digits', icon: 'bi-fire', check: function(s) { return s.total_votes_cast >= 10; }, progress: function(s) { return Math.min(s.total_votes_cast, 10) + '/10'; } },
+    { id: 'century', label: 'Century Voter', icon: 'bi-trophy', check: function(s) { return s.total_votes_cast >= 100; }, progress: function(s) { return Math.min(s.total_votes_cast, 100) + '/100'; } },
+    { id: 'streak_starter', label: 'Streak Starter', icon: 'bi-lightning', check: function(s) { return s.longest_streak >= 3; }, progress: function(s) { return Math.min(s.longest_streak, 3) + '/3 days'; } },
+    { id: 'streak_master', label: 'Streak Master', icon: 'bi-lightning-charge', check: function(s) { return s.longest_streak >= 7; }, progress: function(s) { return Math.min(s.longest_streak, 7) + '/7 days'; } },
+    { id: 'community_voice', label: 'Community Voice', icon: 'bi-people', check: function(s) { return s.total_votes_cast >= 20 && s.majority_agreement_rate !== null && s.majority_agreement_rate >= 0.75; }, progress: function(s) { var r = s.majority_agreement_rate ? Math.round(s.majority_agreement_rate * 100) : 0; return r + '%/75%'; } },
+    { id: 'independent', label: 'Independent Thinker', icon: 'bi-lightbulb', check: function(s) { return s.total_votes_cast >= 20 && s.majority_agreement_rate !== null && s.majority_agreement_rate <= 0.35; }, progress: function(s) { var r = s.majority_agreement_rate ? Math.round(s.majority_agreement_rate * 100) : 100; return r + '%/35%'; } }
+  ];
+
+  // ===== Fetch Stats =====
+  function fetchStats() {
+    fetch('/api/users/me/vote-stats')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.empty || !data.success) {
+          document.getElementById('stats-skeleton').style.display = 'none';
+          return;
+        }
+        statsData = data;
+        renderStats(data);
+        renderBadges(data);
+        populateToolFilter(data.tool_distribution || []);
+      })
+      .catch(function() {
+        document.getElementById('stats-skeleton').style.display = 'none';
+      });
+  }
+
+  function renderStats(data) {
+    var agreeRate = data.majority_agreement_rate != null ? Math.round(data.majority_agreement_rate * 100) : null;
+    var agreeClass = 'agree-mid';
+    if (agreeRate !== null) {
+      if (agreeRate >= 70) agreeClass = 'agree-high';
+      else if (agreeRate < 50) agreeClass = 'agree-low';
+    }
+    var favTool = data.favorite_tool ? data.favorite_tool.name : '—';
+    var catLabel = data.category_most_voted ? formatCategory(data.category_most_voted) : '—';
+    var streakText = data.current_streak > 0
+      ? data.current_streak + ' day' + (data.current_streak > 1 ? 's' : '')
+      : '<span class="text-muted small">Start today!</span>';
+
+    var html = '';
+    html += '<div class="col-6 col-md"><div class="stat-card"><div class="stat-value">' + data.total_matchups_voted + '</div><div class="stat-label">Matchups</div><div class="text-muted" style="font-size:0.7rem;">' + data.total_votes_cast + ' total votes</div></div></div>';
+    html += '<div class="col-6 col-md"><div class="stat-card"><div class="stat-value ' + agreeClass + '">' + (agreeRate !== null ? agreeRate + '%' : '—') + '</div><div class="stat-label">Agreement</div><div class="text-muted" style="font-size:0.7rem;">' + data.majority_agreements + ' with majority</div></div></div>';
+    html += '<div class="col-6 col-md"><div class="stat-card"><div class="stat-value">' + favTool + '</div><div class="stat-label">Favorite Tool</div><div class="text-muted" style="font-size:0.7rem;">' + (data.favorite_tool ? data.favorite_tool.vote_count + ' picks' : '') + '</div></div></div>';
+    html += '<div class="col-6 col-md"><div class="stat-card"><div class="stat-value">' + streakText + '</div><div class="stat-label">Current Streak</div><div class="text-muted" style="font-size:0.7rem;">Best: ' + data.longest_streak + ' days</div></div></div>';
+    html += '<div class="col-6 col-md"><div class="stat-card"><div class="stat-value">' + catLabel + '</div><div class="stat-label">Top Category</div></div></div>';
+
+    document.getElementById('stats-content').innerHTML = html;
+    document.getElementById('stats-content').style.display = '';
+    document.getElementById('stats-skeleton').style.display = 'none';
+  }
+
+  function renderBadges(data) {
+    var seen = {};
+    try { seen = JSON.parse(localStorage.getItem('badge_seen') || '{}'); } catch(e) {}
+    var row = document.getElementById('badges-row');
+    var html = '';
+    BADGES.forEach(function(b) {
+      var earned = b.check(data);
+      var isNew = earned && !seen[b.id];
+      var cls = earned ? 'earned' : 'unearned';
+      if (isNew) cls += ' new-badge';
+      html += '<div class="milestone-badge ' + cls + '" title="' + (earned ? 'Earned!' : b.progress(data)) + '">';
+      html += '<div class="badge-icon"><i class="bi ' + b.icon + '"></i></div>';
+      html += '<div class="badge-label">' + b.label + '</div>';
+      html += '</div>';
+      if (earned) seen[b.id] = true;
+    });
+    row.innerHTML = html;
+    document.getElementById('badges-section').style.display = '';
+    try { localStorage.setItem('badge_seen', JSON.stringify(seen)); } catch(e) {}
+  }
+
+  function populateToolFilter(tools) {
+    var sel = document.getElementById('filter-tool');
+    tools.forEach(function(t) {
+      var opt = document.createElement('option');
+      opt.value = t.slug;
+      opt.textContent = t.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // ===== Fetch History =====
+  function fetchHistory(append) {
+    if (!append) {
+      document.getElementById('history-skeleton').style.display = '';
+      document.getElementById('history-content').style.display = 'none';
+      document.getElementById('history-empty').style.display = 'none';
+      document.getElementById('history-error').style.display = 'none';
+      document.getElementById('load-more-wrapper').style.display = 'none';
+    }
+
+    var params = new URLSearchParams();
+    params.set('page', currentPage);
+    params.set('limit', 20);
+    var tool = document.getElementById('filter-tool').value;
+    var cat = document.getElementById('filter-category').value;
+    var align = document.getElementById('filter-alignment').value;
+    var sort = document.getElementById('filter-sort').value;
+    if (tool) params.set('tool', tool);
+    if (cat) params.set('category', cat);
+    if (align) params.set('alignment', align);
+    if (sort) params.set('sort', sort);
+
+    fetch('/api/users/me/votes?' + params.toString())
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        document.getElementById('history-skeleton').style.display = 'none';
+        if (!data.success) {
+          document.getElementById('history-error').style.display = '';
+          return;
+        }
+        totalVotes = data.total;
+        totalPages = data.pages;
+
+        if (append) {
+          allVotes = allVotes.concat(data.votes);
+        } else {
+          allVotes = data.votes;
+        }
+
+        if (allVotes.length === 0) {
+          document.getElementById('history-empty').style.display = '';
+          document.getElementById('history-content').style.display = 'none';
+          return;
+        }
+
+        renderHistory();
+        document.getElementById('history-content').style.display = '';
+
+        if (currentPage < totalPages) {
+          document.getElementById('load-more-wrapper').style.display = '';
+        } else {
+          document.getElementById('load-more-wrapper').style.display = 'none';
+        }
+        document.getElementById('showing-count').textContent = 'Showing ' + allVotes.length + ' of ' + totalVotes + ' votes';
+      })
+      .catch(function() {
+        document.getElementById('history-skeleton').style.display = 'none';
+        document.getElementById('history-error').style.display = '';
+      });
+  }
+
+  function renderHistory() {
+    var container = document.getElementById('history-content');
+    var html = '';
+    allVotes.forEach(function(v) {
+      var catClass = 'cat-badge-' + v.category;
+      var alignClass = v.user_aligned ? 'align-badge-agree' : 'align-badge-disagree';
+      var alignText = v.user_aligned ? 'Agreed with majority' : 'Against majority';
+      var dateStr = timeAgo(v.voted_at);
+      var aPct = v.community.tool_a_pct || 0;
+      var bPct = v.community.tool_b_pct || 0;
+      var isWinnerA = v.winner_tool_id === v.tool_a.id;
+
+      html += '<div class="card vote-card border-0 shadow-sm mb-3">';
+      html += '<div class="card-body py-3">';
+      html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+      html += '<div><span class="badge rounded-pill ' + catClass + ' me-2" style="font-size:0.7rem;">' + formatCategory(v.category) + '</span>';
+      html += '<small class="text-muted">' + dateStr + '</small></div>';
+      html += '<span class="badge rounded-pill ' + alignClass + '" style="font-size:0.65rem;">' + alignText + '</span>';
+      html += '</div>';
+      html += '<div class="fw-bold mb-2">' + v.tool_a.name + ' vs ' + v.tool_b.name + '</div>';
+      html += '<div class="mb-2"><small class="text-muted">Your pick: </small><span class="fw-semibold">' + v.winner_name + ' <i class="bi bi-check-circle-fill text-success"></i></span></div>';
+      html += '<div class="d-flex align-items-center gap-2 mb-1">';
+      html += '<small class="text-muted" style="min-width:60px;">' + v.tool_a.name + '</small>';
+      html += '<div class="community-bar flex-grow-1">';
+      html += '<div class="bar-a" style="width:' + aPct + '%;"></div>';
+      html += '<div class="bar-b" style="width:' + bPct + '%;"></div>';
+      html += '</div>';
+      html += '<small class="text-muted" style="min-width:60px;text-align:right;">' + v.tool_b.name + '</small>';
+      html += '</div>';
+      html += '<div class="d-flex justify-content-between">';
+      html += '<small class="text-muted">' + aPct + '%</small>';
+      html += '<small class="text-muted">' + v.community.total_votes + ' community votes</small>';
+      html += '<small class="text-muted">' + bPct + '%</small>';
+      html += '</div>';
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  }
+
+  // ===== Helpers =====
+  function formatCategory(cat) {
+    return cat.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+  }
+
+  function timeAgo(isoStr) {
+    if (!isoStr) return '';
+    var d = new Date(isoStr);
+    var now = new Date();
+    var diffMs = now - d;
+    var diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    var diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return diffHr + 'h ago';
+    var diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 7) return diffDay + 'd ago';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // ===== Filter Handlers =====
+  ['filter-tool', 'filter-category', 'filter-alignment', 'filter-sort'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', function() {
+      currentPage = 1;
+      allVotes = [];
+      fetchHistory(false);
+    });
+  });
+
+  // ===== Load More =====
+  document.getElementById('load-more-btn').addEventListener('click', function() {
+    currentPage++;
+    fetchHistory(true);
+  });
+
+  // ===== Init =====
+  fetchStats();
+  fetchHistory(false);
+})();
+</script>
+{% endblock %}

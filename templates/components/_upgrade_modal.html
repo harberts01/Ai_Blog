@@ -1,0 +1,77 @@
+<!-- Upgrade Modal -->
+<div class="modal fade" id="upgradeModal" tabindex="-1" aria-labelledby="upgradeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center px-4 pt-0">
+        <div class="mb-3">
+          <i class="bi bi-trophy-fill text-warning" style="font-size: 2.5rem;"></i>
+        </div>
+        <h4 class="fw-bold" id="upgradeModalLabel">Unlock Compare & Vote</h4>
+        <p class="text-muted">See which AI writes best — backed by community data.</p>
+
+        <ul class="list-unstyled text-start mx-auto" style="max-width: 320px;">
+          <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Vote on head-to-head AI matchups</li>
+          <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Access the real-time analytics dashboard</li>
+          <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>See which tools win across 5 quality categories</li>
+          <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Track tool performance trends over time</li>
+        </ul>
+      </div>
+      <div class="modal-footer border-0 flex-column gap-2 px-4 pb-4">
+        <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-lg w-100" id="upgrade-cta-btn">
+          <i class="bi bi-star-fill me-1"></i>Upgrade Now
+        </a>
+        <a href="/features/compare" class="text-muted small">Learn more</a>
+        <button type="button" class="btn btn-link text-muted small text-decoration-none" data-bs-dismiss="modal" id="upgrade-dismiss-btn">
+          Maybe later
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var modal = document.getElementById('upgradeModal');
+  if (!modal) return;
+
+  var sessionDismissals = 0;
+  var MAX_AUTO_DISMISSALS = 3;
+
+  function trackEvent(event, data) {
+    console.log(JSON.stringify(Object.assign({ event: event, timestamp: new Date().toISOString() }, data || {})));
+  }
+
+  modal.addEventListener('show.bs.modal', function() {
+    trackEvent('upgrade_modal_shown', { source: modal.dataset.triggerSource || 'unknown' });
+  });
+
+  var ctaBtn = document.getElementById('upgrade-cta-btn');
+  if (ctaBtn) {
+    ctaBtn.addEventListener('click', function() {
+      modal.dataset.ctaClicked = 'true';
+      trackEvent('upgrade_modal_cta_clicked', {});
+    });
+  }
+
+  modal.addEventListener('hidden.bs.modal', function() {
+    if (modal.dataset.ctaClicked !== 'true') {
+      sessionDismissals++;
+      trackEvent('upgrade_modal_dismissed', { dismissal_count: sessionDismissals });
+    }
+    modal.dataset.ctaClicked = 'false';
+    modal.dataset.triggerSource = '';
+  });
+
+  window.showUpgradeModal = function(source) {
+    if (sessionDismissals >= MAX_AUTO_DISMISSALS && source !== 'manual_cta') {
+      return false;
+    }
+    modal.dataset.triggerSource = source;
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+    return true;
+  };
+})();
+</script>
