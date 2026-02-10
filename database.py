@@ -3690,7 +3690,7 @@ def get_active_matchups(page=1, per_page=12):
                 JOIN Post pa ON m.post_a_id = pa.postid
                 JOIN Post pb ON m.post_b_id = pb.postid
                 WHERE m.status = 'active'
-                ORDER BY m.created_at DESC
+                ORDER BY m.matchup_id DESC
                 LIMIT %s OFFSET %s
             """, (per_page, offset))
             matchups = [

@@ -698,7 +698,7 @@ def generate_all_posts(app=None):
 
         if last_post_date:
             days_since_post = (datetime.now() - last_post_date).days
-            if days_since_post < 7:
+            if days_since_post < 4:
                 print(f"⏭️ Skipping {tool['name']} - posted {days_since_post} days ago (next post in {7 - days_since_post} days)")
                 continue
             print(f"📝 {tool['name']} last posted {days_since_post} days ago - generating new post...")
