@@ -206,62 +206,17 @@
                 </td>
                 <td>
                   {% if log.error_message %}
-                  <button type="button" class="btn btn-sm btn-outline-danger" 
-                          data-bs-toggle="modal" 
+                  <button type="button" class="btn btn-sm btn-outline-danger"
+                          data-bs-toggle="modal"
                           data-bs-target="#errorModal{{ log.log_id }}">
                     <i class="bi bi-exclamation-triangle me-1"></i>View Error
                   </button>
-                  
-                  <!-- Error Modal -->
-                  <div class="modal fade" id="errorModal{{ log.log_id }}" tabindex="-1">
-                    <div class="modal-dialog">
-                      <div class="modal-content">
-                        <div class="modal-header bg-danger text-white">
-                          <h5 class="modal-title">
-                            <i class="bi bi-exclamation-triangle me-2"></i>Error Details
-                          </h5>
-                          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                          <p class="mb-2"><strong>Job ID:</strong> {{ log.log_id }}</p>
-                          <p class="mb-2"><strong>Job Type:</strong> {{ log.job_type }}</p>
-                          <p class="mb-2"><strong>Time:</strong> {{ log.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
-                          <hr>
-                          <p class="mb-2"><strong>Error Message:</strong></p>
-                          <pre class="bg-light p-3 rounded"><code>{{ log.error_message }}</code></pre>
-                        </div>
-                        <div class="modal-footer">
-                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                   {% elif log.details %}
-                  <button type="button" class="btn btn-sm btn-outline-secondary" 
-                          data-bs-toggle="modal" 
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                          data-bs-toggle="modal"
                           data-bs-target="#detailsModal{{ log.log_id }}">
                     <i class="bi bi-info-circle me-1"></i>View Details
                   </button>
-                  
-                  <!-- Details Modal -->
-                  <div class="modal fade" id="detailsModal{{ log.log_id }}" tabindex="-1">
-                    <div class="modal-dialog">
-                      <div class="modal-content">
-                        <div class="modal-header">
-                          <h5 class="modal-title">
-                            <i class="bi bi-info-circle me-2"></i>Execution Details
-                          </h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                          <pre class="bg-light p-3 rounded mb-0"><code>{{ log.details | tojson(indent=2) }}</code></pre>
-                        </div>
-                        <div class="modal-footer">
-                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                   {% else %}
                   <span class="text-muted">-</span>
                   {% endif %}
@@ -271,6 +226,54 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Modals rendered outside the table to prevent DOM/rendering issues -->
+        {% for log in logs %}
+          {% if log.error_message %}
+          <div class="modal fade" id="errorModal{{ log.log_id }}" tabindex="-1">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                  <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Error Details
+                  </h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <p class="mb-2"><strong>Job ID:</strong> {{ log.log_id }}</p>
+                  <p class="mb-2"><strong>Job Type:</strong> {{ log.job_type }}</p>
+                  <p class="mb-2"><strong>Time:</strong> {{ log.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                  <hr>
+                  <p class="mb-2"><strong>Error Message:</strong></p>
+                  <pre class="bg-light p-3 rounded"><code>{{ log.error_message }}</code></pre>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% elif log.details %}
+          <div class="modal fade" id="detailsModal{{ log.log_id }}" tabindex="-1">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">
+                    <i class="bi bi-info-circle me-2"></i>Execution Details
+                  </h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <pre class="bg-light p-3 rounded mb-0"><code>{{ log.details | tojson(indent=2) }}</code></pre>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
         {% else %}
         <div class="p-5 text-center text-muted">
           <i class="bi bi-inbox fs-1 mb-3 d-block"></i>
