@@ -203,8 +203,8 @@ class Config:
     CRON_SECRET = os.environ.get('CRON_SECRET', 'change-me-in-production')
     
     # Site settings
-    SITE_URL = os.environ.get('SITE_URL', 'http://localhost:5000')
-    SITE_NAME = 'AI Blog'
+    SITE_URL = os.environ.get('SITE_URL', 'https://www.aiblogdaily.com')
+    SITE_NAME = 'AI Blog Daily'
     
     # AI Tools configuration with native providers
     AI_TOOLS = {
