@@ -17,7 +17,7 @@ def get_all_post_ids_with_tools():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT p.postid, p.tool_id, t.name
+                SELECT p.postid, p.tool_id, t.name, p.Category
                 FROM Post p
                 JOIN AITool t ON p.tool_id = t.tool_id
                 WHERE t.status = 'active'
@@ -35,19 +35,21 @@ def main():
         return
 
     print(f"Found {len(posts)} posts:")
-    for post_id, tool_id, tool_name in posts:
-        print(f"  Post {post_id} — {tool_name} (tool_id={tool_id})")
+    for post_id, tool_id, tool_name, category in posts:
+        print(f"  Post {post_id} — {tool_name} (tool_id={tool_id}, category={category})")
 
     created = 0
     skipped = 0
 
-    for (id_a, tool_a, name_a), (id_b, tool_b, name_b) in combinations(posts, 2):
+    for (id_a, tool_a, name_a, cat_a), (id_b, tool_b, name_b, cat_b) in combinations(posts, 2):
         if tool_a == tool_b:
             continue  # skip same-tool pairs
+        if cat_a != cat_b:
+            continue  # skip different-category pairs
 
         matchup_id = create_matchup(id_a, id_b)
         if matchup_id:
-            print(f"  Created matchup {matchup_id}: Post {id_a} ({name_a}) vs Post {id_b} ({name_b})")
+            print(f"  Created matchup {matchup_id}: Post {id_a} ({name_a}) vs Post {id_b} ({name_b}) [{cat_a}]")
             created += 1
         else:
             skipped += 1

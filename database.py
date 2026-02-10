@@ -1705,9 +1705,9 @@ def create_matchup(post_a_id, post_b_id, prompt_id=None):
         return None
     try:
         with connection.cursor() as cursor:
-            # Fetch both posts with their tool info
+            # Fetch both posts with their tool info and category
             cursor.execute("""
-                SELECT p.postid, p.tool_id, t.status
+                SELECT p.postid, p.tool_id, t.status, p.Category
                 FROM Post p
                 JOIN AITool t ON p.tool_id = t.tool_id
                 WHERE p.postid IN (%s, %s)
@@ -1718,13 +1718,17 @@ def create_matchup(post_a_id, post_b_id, prompt_id=None):
                 logger.warning("Cannot create matchup: one or both posts not found")
                 return None
 
-            post_map = {row[0]: {'tool_id': row[1], 'status': row[2]} for row in rows}
+            post_map = {row[0]: {'tool_id': row[1], 'status': row[2], 'category': row[3]} for row in rows}
 
             tool_a_id = post_map[post_a_id]['tool_id']
             tool_b_id = post_map[post_b_id]['tool_id']
 
             if tool_a_id == tool_b_id:
                 logger.warning("Cannot create matchup: both posts from same tool")
+                return None
+
+            if post_map[post_a_id]['category'] != post_map[post_b_id]['category']:
+                logger.warning("Cannot create matchup: posts are from different categories")
                 return None
 
             # Check both tools are active
@@ -1795,6 +1799,7 @@ def generate_missing_matchups():
                 WHERE ta.status = 'active'
                   AND tb.status = 'active'
                   AND pa.tool_id != pb.tool_id
+                  AND pa.Category = pb.Category
                 ON CONFLICT (post_a_id, post_b_id) DO NOTHING
             """)
             created_count = cursor.rowcount

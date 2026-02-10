@@ -2168,7 +2168,7 @@ def api_admin_seed_matchup():
     matchup_id = db.create_matchup(data['post_a_id'], data['post_b_id'],
                                     prompt_id=data.get('prompt_id'))
     if not matchup_id:
-        return jsonify({'error': 'Failed to create matchup (posts may be from same tool or matchup already exists)'}), 409
+        return jsonify({'error': 'Failed to create matchup (posts may be from same tool, different categories, or matchup already exists)'}), 409
     return jsonify({'success': True, 'matchup_id': matchup_id}), 201
 
 
