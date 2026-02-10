@@ -40,12 +40,12 @@ CREATE TABLE IF NOT EXISTS Post (
     tool_id INTEGER REFERENCES AITool(tool_id)
 );
 
--- ============== Subscriptions Table ==============
-CREATE TABLE IF NOT EXISTS Subscription (
-    subscription_id SERIAL PRIMARY KEY,
+-- ============== Tool Follows Table ==============
+CREATE TABLE IF NOT EXISTS ToolFollow (
+    follow_id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,
     tool_id INTEGER NOT NULL REFERENCES AITool(tool_id) ON DELETE CASCADE,
-    subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    followed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, tool_id)
 );
 

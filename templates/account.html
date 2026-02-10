@@ -29,8 +29,8 @@
                 Bookmarks
               </div>
               <div>
-                <strong class="d-block text-dark">{{ profile.subscription_count }}</strong>
-                Subs
+                <strong class="d-block text-dark">{{ profile.follow_count }}</strong>
+                Following
               </div>
             </div>
           </div>
@@ -72,8 +72,8 @@
                 Bookmarks
               </div>
               <div>
-                <strong class="d-block text-dark">{{ profile.subscription_count }}</strong>
-                Subscriptions
+                <strong class="d-block text-dark">{{ profile.follow_count }}</strong>
+                Followingcriptions
               </div>
             </div>
           </div>
@@ -196,7 +196,7 @@
               </button>
               
               <a href="{{ url_for('subscriptions') }}" class="btn btn-outline-secondary ms-2">
-                <i class="bi bi-rss me-1"></i>Manage Subscriptions
+                <i class="bi bi-rss me-1"></i>Manage Followed Tools
               </a>
             </form>
           </div>
@@ -279,7 +279,7 @@
               <li>Your profile and login credentials</li>
               <li>All your comments ({{ profile.comment_count }} comments)</li>
               <li>All your bookmarks ({{ profile.bookmark_count }} bookmarks)</li>
-              <li>All your subscriptions ({{ profile.subscription_count }} subscriptions)</li>
+              <li>All your followed tools ({{ profile.follow_count }} followed)</li>
               <li>All your notifications</li>
             </ul>
             

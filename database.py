@@ -660,8 +660,8 @@ def get_user_full_profile(user_id):
             cursor.execute("SELECT COUNT(*) FROM Bookmark WHERE user_id = %s", (user_id,))
             user['bookmark_count'] = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM Subscription WHERE user_id = %s", (user_id,))
-            user['subscription_count'] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM ToolFollow WHERE user_id = %s", (user_id,))
+            user['follow_count'] = cursor.fetchone()[0]
             
             return user
     finally:
@@ -707,18 +707,18 @@ def create_user(email, password_hash, username):
         connection.close()
 
 
-# ============== Subscriptions ==============
+# ============== Tool Follows ==============
 
 def get_user_subscriptions(user_id):
-    """Get all subscriptions for a user"""
+    """Get all followed tools for a user"""
     connection = get_connection()
     if not connection:
         return []
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT t.tool_id, t.name, t.slug, t.description, t.icon_url, s.subscribed_at
-                FROM Subscription s
+                SELECT t.tool_id, t.name, t.slug, t.description, t.icon_url, s.followed_at
+                FROM ToolFollow s
                 JOIN AITool t ON s.tool_id = t.tool_id
                 WHERE s.user_id = %s
                 ORDER BY t.name
@@ -730,7 +730,7 @@ def get_user_subscriptions(user_id):
                     'slug': row[2],
                     'description': row[3],
                     'icon_url': row[4],
-                    'subscribed_at': row[5]
+                    'followed_at': row[5]
                 }
                 for row in cursor.fetchall()
             ]
@@ -739,14 +739,14 @@ def get_user_subscriptions(user_id):
 
 
 def get_subscribed_tool_ids(user_id):
-    """Get list of tool IDs that a user is subscribed to"""
+    """Get list of tool IDs that a user follows"""
     connection = get_connection()
     if not connection:
         return []
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT tool_id FROM Subscription WHERE user_id = %s
+                SELECT tool_id FROM ToolFollow WHERE user_id = %s
             """, (user_id,))
             return [row[0] for row in cursor.fetchall()]
     finally:
@@ -754,54 +754,54 @@ def get_subscribed_tool_ids(user_id):
 
 
 def add_subscription(user_id, tool_id):
-    """Add a subscription for a user"""
+    """Follow an AI tool for a user"""
     connection = get_connection()
     if not connection:
         return False
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Subscription (user_id, tool_id) VALUES (%s, %s)",
+                "INSERT INTO ToolFollow (user_id, tool_id) VALUES (%s, %s)",
                 (user_id, tool_id)
             )
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error adding subscription: {e}")
+        print(f"Error following tool: {e}")
         return False
     finally:
         connection.close()
 
 
 def remove_subscription(user_id, tool_id):
-    """Remove a subscription for a user"""
+    """Unfollow an AI tool for a user"""
     connection = get_connection()
     if not connection:
         return False
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM Subscription WHERE user_id = %s AND tool_id = %s",
+                "DELETE FROM ToolFollow WHERE user_id = %s AND tool_id = %s",
                 (user_id, tool_id)
             )
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error removing subscription: {e}")
+        print(f"Error unfollowing tool: {e}")
         return False
     finally:
         connection.close()
 
 
 def is_subscribed(user_id, tool_id):
-    """Check if user is subscribed to a tool"""
+    """Check if user follows a tool"""
     connection = get_connection()
     if not connection:
         return False
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT 1 FROM Subscription WHERE user_id = %s AND tool_id = %s",
+                "SELECT 1 FROM ToolFollow WHERE user_id = %s AND tool_id = %s",
                 (user_id, tool_id)
             )
             return cursor.fetchone() is not None
@@ -810,7 +810,7 @@ def is_subscribed(user_id, tool_id):
 
 
 def get_subscriber_emails_by_tool(tool_id):
-    """Get email addresses of all users subscribed to a tool (for notifications)"""
+    """Get email addresses of all users following a tool (for notifications)"""
     connection = get_connection()
     if not connection:
         return []
@@ -819,7 +819,7 @@ def get_subscriber_emails_by_tool(tool_id):
             cursor.execute("""
                 SELECT u.email
                 FROM Users u
-                JOIN Subscription s ON u.user_id = s.user_id
+                JOIN ToolFollow s ON u.user_id = s.user_id
                 WHERE s.tool_id = %s AND u.email_notifications = TRUE
             """, (tool_id,))
             return [row[0] for row in cursor.fetchall()]
@@ -828,7 +828,7 @@ def get_subscriber_emails_by_tool(tool_id):
 
 
 def get_subscribed_posts(user_id, page=1, per_page=POSTS_PER_PAGE):
-    """Get paginated posts from tools the user is subscribed to"""
+    """Get paginated posts from tools the user follows"""
     connection = get_connection()
     if not connection:
         return [], 0
@@ -839,18 +839,18 @@ def get_subscribed_posts(user_id, page=1, per_page=POSTS_PER_PAGE):
             cursor.execute("""
                 SELECT COUNT(*)
                 FROM Post p
-                JOIN Subscription s ON p.tool_id = s.tool_id
+                JOIN ToolFollow s ON p.tool_id = s.tool_id
                 WHERE s.user_id = %s
             """, (user_id,))
             total = cursor.fetchone()[0]
-            
+
             # Get paginated posts
             cursor.execute("""
                 SELECT p.postid, p.Title, p.Content, p.Category, p.CreatedAt, p.tool_id,
                        t.name as tool_name, t.slug as tool_slug
                 FROM Post p
                 JOIN AITool t ON p.tool_id = t.tool_id
-                JOIN Subscription s ON t.tool_id = s.tool_id
+                JOIN ToolFollow s ON t.tool_id = s.tool_id
                 WHERE s.user_id = %s
                 ORDER BY p.CreatedAt DESC
                 LIMIT %s OFFSET %s
@@ -1400,9 +1400,9 @@ def get_admin_statistics():
             cursor.execute("SELECT COUNT(*) FROM Comment WHERE is_spam = TRUE")
             stats['spam_comments'] = cursor.fetchone()[0]
             
-            # Total subscriptions
-            cursor.execute("SELECT COUNT(*) FROM Subscription")
-            stats['total_subscriptions'] = cursor.fetchone()[0]
+            # Total follows
+            cursor.execute("SELECT COUNT(*) FROM ToolFollow")
+            stats['total_follows'] = cursor.fetchone()[0]
             
             # Total bookmarks
             cursor.execute("SELECT COUNT(*) FROM Bookmark")
@@ -4119,7 +4119,7 @@ def get_subscriber_user_ids_by_tool(tool_id):
             cursor.execute("""
                 SELECT u.user_id
                 FROM Users u
-                JOIN Subscription s ON u.user_id = s.user_id
+                JOIN ToolFollow s ON u.user_id = s.user_id
                 WHERE s.tool_id = %s AND u.is_active = TRUE
             """, (tool_id,))
             return [row[0] for row in cursor.fetchall()]
@@ -4133,7 +4133,7 @@ def get_premium_subscriber_emails_by_tool(tool_id):
     
     Only returns emails of users who:
     - Have an active/trialing premium subscription
-    - Are subscribed to the specified AI tool
+    - Are following the specified AI tool
     - Have email_notifications enabled
     - Have an active account
     
@@ -4151,10 +4151,10 @@ def get_premium_subscriber_emails_by_tool(tool_id):
             cursor.execute("""
                 SELECT DISTINCT u.email
                 FROM Users u
-                JOIN Subscription s ON u.user_id = s.user_id
+                JOIN ToolFollow s ON u.user_id = s.user_id
                 JOIN UserSubscription us ON u.user_id = us.user_id
                 JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
-                WHERE s.tool_id = %s 
+                WHERE s.tool_id = %s
                 AND u.is_active = TRUE
                 AND u.email_notifications = TRUE
                 AND us.status IN ('active', 'trialing')
@@ -4175,7 +4175,7 @@ def get_premium_subscriber_user_ids_by_tool(tool_id):
     
     Only returns user IDs of users who:
     - Have an active/trialing premium subscription
-    - Are subscribed to the specified AI tool
+    - Are following the specified AI tool
     - Have an active account
     
     Args:
@@ -4192,10 +4192,10 @@ def get_premium_subscriber_user_ids_by_tool(tool_id):
             cursor.execute("""
                 SELECT DISTINCT u.user_id
                 FROM Users u
-                JOIN Subscription s ON u.user_id = s.user_id
+                JOIN ToolFollow s ON u.user_id = s.user_id
                 JOIN UserSubscription us ON u.user_id = us.user_id
                 JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
-                WHERE s.tool_id = %s 
+                WHERE s.tool_id = %s
                 AND u.is_active = TRUE
                 AND us.status IN ('active', 'trialing')
                 AND sp.name != 'free'

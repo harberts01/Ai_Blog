@@ -715,7 +715,7 @@ def clear_data(cursor):
     cursor.execute("DELETE FROM Comparison")
     cursor.execute("DELETE FROM Bookmark")
     cursor.execute("DELETE FROM Comment")
-    cursor.execute("DELETE FROM Subscription")
+    cursor.execute("DELETE FROM ToolFollow")
     cursor.execute("DELETE FROM Post")
     cursor.execute("DELETE FROM Users")
     print("   Data cleared.")
@@ -859,7 +859,7 @@ def seed_subscriptions(cursor, user_ids, tools):
         
         for tool_id in subscribed_tools:
             cursor.execute("""
-                INSERT INTO Subscription (user_id, tool_id)
+                INSERT INTO ToolFollow (user_id, tool_id)
                 VALUES (%s, %s)
                 ON CONFLICT DO NOTHING
             """, (user_id, tool_id))
