@@ -681,20 +681,21 @@ def generate_all_posts(app=None):
     from datetime import datetime, timedelta
     
     print("🔍 Checking which AI tools need to generate posts...")
-    
+    posts_generated = 0
+
     for tool_slug, tool_config in Config.AI_TOOLS.items():
         # Skip tools marked as coming soon
         if tool_config.get('coming_soon', False):
             print(f"⏭️ Skipping {tool_config.get('name', tool_slug)} - Coming Soon (API waitlist)")
             continue
-            
+
         tool = db.get_tool_by_slug(tool_slug)
         if not tool:
             continue
-            
+
         # Check when this tool last posted
         last_post_date = db.get_last_post_date_for_tool(tool['id'])
-        
+
         if last_post_date:
             days_since_post = (datetime.now() - last_post_date).days
             if days_since_post < 7:
@@ -703,8 +704,11 @@ def generate_all_posts(app=None):
             print(f"📝 {tool['name']} last posted {days_since_post} days ago - generating new post...")
         else:
             print(f"📝 {tool['name']} has no posts yet - generating first post...")
-        
-        generate_post_for_tool(tool_slug, app=app)
+
+        result = generate_post_for_tool(tool_slug, app=app)
+        if result:
+            posts_generated += 1
         time.sleep(2)  # Rate limiting between API calls
-    
-    print("✅ Post generation check complete")
+
+    print(f"✅ Post generation check complete — {posts_generated} posts generated")
+    return posts_generated

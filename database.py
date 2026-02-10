@@ -1767,6 +1767,51 @@ def create_matchup(post_a_id, post_b_id, prompt_id=None):
         connection.close()
 
 
+def generate_missing_matchups():
+    """
+    Generate all missing matchups between posts from different active AI tools.
+
+    Uses a single SQL INSERT with ON CONFLICT DO NOTHING for efficiency.
+    Returns the number of newly created matchups.
+    """
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO matchups (post_a_id, post_b_id, tool_a, tool_b, position_seed, status)
+                SELECT
+                    CASE WHEN pa.tool_id < pb.tool_id THEN pa.postid ELSE pb.postid END,
+                    CASE WHEN pa.tool_id < pb.tool_id THEN pb.postid ELSE pa.postid END,
+                    LEAST(pa.tool_id, pb.tool_id),
+                    GREATEST(pa.tool_id, pb.tool_id),
+                    floor(random() * 2147483647)::int,
+                    'active'
+                FROM Post pa
+                JOIN AITool ta ON pa.tool_id = ta.tool_id
+                JOIN Post pb ON pa.postid < pb.postid
+                JOIN AITool tb ON pb.tool_id = tb.tool_id
+                WHERE ta.status = 'active'
+                  AND tb.status = 'active'
+                  AND pa.tool_id != pb.tool_id
+                ON CONFLICT (post_a_id, post_b_id) DO NOTHING
+            """)
+            created_count = cursor.rowcount
+            connection.commit()
+            logger.info(f"Generated {created_count} new matchups")
+            return created_count
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error generating matchups: {e}")
+        return 0
+    finally:
+        connection.close()
+
+
 def get_matchup(matchup_id):
     """Get a matchup with full post and tool details"""
     connection = get_connection()

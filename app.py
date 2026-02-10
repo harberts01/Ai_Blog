@@ -1522,6 +1522,32 @@ def cron_recompute_stats():
         return jsonify({'success': False, 'error': error_msg}), 500
 
 
+@app.route("/cron/generate-matchups")
+@limiter.exempt
+def cron_generate_matchups():
+    """Cron endpoint for generating missing matchups between AI tool posts (called by Dokploy)"""
+    token = request.args.get('token')
+    if not token or token != Config.CRON_SECRET:
+        logger.warning("Unauthorized cron attempt for generate-matchups")
+        abort(403)
+
+    log_id = db.log_cron_start('generate_matchups')
+
+    try:
+        logger.info("Cron: Generating missing matchups...")
+        matchups_created = db.generate_missing_matchups()
+        logger.info(f"Cron: Matchup generation complete — {matchups_created} new matchups")
+
+        db.log_cron_complete(log_id, details={'matchups_created': matchups_created})
+
+        return jsonify({'success': True, 'message': 'Matchup generation complete', 'matchups_created': matchups_created})
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Cron generate-matchups failed: {error_msg}")
+        db.log_cron_failure(log_id, error_msg)
+        return jsonify({'success': False, 'error': error_msg}), 500
+
+
 # ============== Error Handlers ==============
 
 @app.errorhandler(404)
