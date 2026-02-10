@@ -4,6 +4,7 @@ flask-wtf
 flask-limiter
 gunicorn
 werkzeug
+gevents
 
 # Database
 psycopg2-binary
