@@ -56,13 +56,16 @@
 .vote-card {
   flex: 1 1 170px; max-width: 220px; border: 1px solid var(--bs-border-color);
   border-radius: .5rem; padding: .75rem; text-align: center; background: var(--bs-body-bg);
+  display: flex; flex-direction: column; align-items: center;
 }
 .vote-card h6 { font-size: .85rem; margin-bottom: .25rem; }
-.vote-card .vote-desc { font-size: .72rem; color: var(--bs-secondary); margin-bottom: .5rem; }
+.vote-card .vote-desc { font-size: .72rem; color: var(--bs-secondary); margin-bottom: .5rem; flex: 1; }
+.vote-card > .d-flex { flex-wrap: nowrap; width: 100%; }
 .vote-btn {
   border: 2px solid var(--bs-border-color); border-radius: .375rem;
   padding: .35rem .75rem; font-size: .8rem; cursor: pointer;
-  background: transparent; transition: all .15s; width: 48%;
+  background: transparent; transition: all .15s; flex: 1 1 0; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .vote-btn:hover { border-color: var(--bs-primary); }
 .vote-btn.selected-left { background: var(--bs-primary); color: #fff; border-color: var(--bs-primary); }
