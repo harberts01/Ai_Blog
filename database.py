@@ -3637,7 +3637,8 @@ def get_active_matchups(page=1, per_page=12):
                        m.tool_a, m.tool_b, m.status, m.created_at,
                        ta.name, ta.slug,
                        tb.name, tb.slug,
-                       pa.Title, pb.Title
+                       pa.Title, pb.Title,
+                       pa.Category
                 FROM matchups m
                 JOIN AITool ta ON m.tool_a = ta.tool_id
                 JOIN AITool tb ON m.tool_b = tb.tool_id
@@ -3655,7 +3656,8 @@ def get_active_matchups(page=1, per_page=12):
                     'status': row[5], 'created_at': row[6],
                     'tool_a_name': row[7], 'tool_a_slug': row[8],
                     'tool_b_name': row[9], 'tool_b_slug': row[10],
-                    'title_a': row[11], 'title_b': row[12]
+                    'title_a': row[11], 'title_b': row[12],
+                    'category': row[13]
                 }
                 for row in cursor.fetchall()
             ]

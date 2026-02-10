@@ -400,15 +400,22 @@
     </div>
     <script>
     (function() {
-      var KEY = 'compare_announcement_dismissed';
-      if (!localStorage.getItem(KEY)) {
+      var KEY = 'compare_announcement_dismissed_at';
+      var DISMISS_DAYS = 7;
+      var dismissed = localStorage.getItem(KEY);
+      var show = true;
+      if (dismissed) {
+        var elapsed = Date.now() - parseInt(dismissed, 10);
+        if (elapsed < DISMISS_DAYS * 86400000) show = false;
+      }
+      if (show) {
         var el = document.getElementById('compare-announcement');
         if (el) el.style.display = '';
       }
       window.dismissCompareAnnouncement = function() {
         var el = document.getElementById('compare-announcement');
         if (el) el.style.display = 'none';
-        localStorage.setItem(KEY, '1');
+        localStorage.setItem(KEY, String(Date.now()));
       };
     })();
     </script>
@@ -522,13 +529,16 @@
         const container = document.getElementById('flash-container');
         
         alerts.forEach(function(alert) {
+          // Skip the compare announcement banner — it has its own dismiss logic
+          if (alert.id === 'compare-announcement') return;
+
           // Remove container when alert is closed
           alert.addEventListener('closed.bs.alert', function() {
             if (container && container.querySelectorAll('.alert').length === 0) {
               container.remove();
             }
           });
-          
+
           // Auto-dismiss after 5 seconds
           setTimeout(function() {
             const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);

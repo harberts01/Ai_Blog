@@ -125,8 +125,13 @@
           <span class="blind-label">Post A vs Post B</span>
           <span class="tool-name-reveal" id="header-tool-names"></span>
         </h1>
+        {% if left_post.category or right_post.category %}
+        <small class="text-muted">
+          <i class="bi bi-tag me-1"></i>{{ left_post.category or right_post.category }}
+        </small>
+        {% endif %}
         {% if matchup.prompt_id %}
-        <small class="text-muted">Same prompt comparison</small>
+        <small class="text-muted d-block">Same prompt comparison</small>
         {% endif %}
       </div>
       <div>
