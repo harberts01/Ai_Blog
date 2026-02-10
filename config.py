@@ -201,7 +201,13 @@ class Config:
     # Cron settings (for external scheduler like Dokploy)
     # Generate a secure token: python -c "import secrets; print(secrets.token_urlsafe(32))"
     CRON_SECRET = os.environ.get('CRON_SECRET', 'change-me-in-production')
-    
+
+    # Rate limiting whitelist - comma-separated IPs that bypass Flask-Limiter
+    # Example: RATE_LIMIT_WHITELIST=123.45.67.89,98.76.54.32
+    RATE_LIMIT_WHITELIST = [
+        ip.strip() for ip in os.environ.get('RATE_LIMIT_WHITELIST', '').split(',') if ip.strip()
+    ]
+
     # Site settings
     SITE_URL = os.environ.get('SITE_URL', 'https://www.aiblogdaily.com')
     SITE_NAME = 'AI Blog Daily'

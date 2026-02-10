@@ -64,11 +64,15 @@ app.secret_key = Config.SECRET_KEY
 csrf = CSRFProtect(app)
 
 # Rate Limiting
+def _is_whitelisted():
+    return get_remote_address() in app.config.get('RATE_LIMIT_WHITELIST', [])
+
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     default_limits=["1000 per day", "200 per hour"],
-    storage_uri="memory://"
+    storage_uri="memory://",
+    request_filter=_is_whitelisted
 )
 
 
