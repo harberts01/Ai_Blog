@@ -1637,6 +1637,7 @@ VOTE_ERROR_STATUS = {
     'EXISTING_VOTES_USE_PATCH': 409,
     'NEW_VOTE_VIA_PATCH': 400,
     'DUPLICATE_VOTE': 409,
+    'FREE_LIMIT_REACHED': 403,
 }
 
 
@@ -2065,13 +2066,51 @@ def batch_submit_votes(user_id, matchup_id, votes, position_a_is_left, metadata=
                            OR us.current_period_end > CURRENT_TIMESTAMP)
                 )
             """, (user_id,))
-            if not cursor.fetchone()[0]:
-                cat_str = ','.join(categories)
-                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
-                                'PREMIUM_REQUIRED', metadata)
-                connection.commit()
-                return _make_vote_error('PREMIUM_REQUIRED',
-                                        'Voting requires a premium subscription.')
+            is_premium_user = cursor.fetchone()[0]
+            if not is_premium_user:
+                # Bootstrap free voting: allow limited votes for free users
+                from config import Config
+                if Config.BOOTSTRAP_FREE_VOTING_ENABLED:
+                    # Check if user already voted on THIS matchup (doesn't count as new)
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM votes
+                        WHERE user_id = %s AND matchup_id = %s
+                    """, (user_id, matchup_id))
+                    already_voted_this = cursor.fetchone()[0] > 0
+
+                    if not already_voted_this:
+                        # Count distinct matchups voted this ISO week
+                        cursor.execute("""
+                            SELECT COUNT(DISTINCT matchup_id)
+                            FROM votes
+                            WHERE user_id = %s
+                              AND voted_at >= date_trunc('week', CURRENT_TIMESTAMP)
+                        """, (user_id,))
+                        free_used = cursor.fetchone()[0]
+
+                        if free_used >= Config.BOOTSTRAP_FREE_VOTES_PER_WEEK:
+                            cat_str = ','.join(categories)
+                            _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                            'FREE_LIMIT_REACHED', metadata)
+                            connection.commit()
+                            # Calculate next Monday 00:00 UTC for reset time
+                            cursor.execute("""
+                                SELECT date_trunc('week', CURRENT_TIMESTAMP) + INTERVAL '7 days'
+                            """)
+                            resets_at = cursor.fetchone()[0].isoformat() + 'Z'
+                            return _make_vote_error('FREE_LIMIT_REACHED',
+                                                    'You have used all your free comparisons this week.',
+                                                    {'used': free_used,
+                                                     'limit': Config.BOOTSTRAP_FREE_VOTES_PER_WEEK,
+                                                     'resets_at': resets_at})
+                    # Free user within limit — proceed to vote
+                else:
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'PREMIUM_REQUIRED', metadata)
+                    connection.commit()
+                    return _make_vote_error('PREMIUM_REQUIRED',
+                                            'Voting requires a premium subscription.')
 
             # Matchup validation
             cursor.execute("""
@@ -2288,13 +2327,31 @@ def batch_edit_votes(user_id, matchup_id, votes, position_a_is_left, metadata=No
                            OR us.current_period_end > CURRENT_TIMESTAMP)
                 )
             """, (user_id,))
-            if not cursor.fetchone()[0]:
-                cat_str = ','.join(categories)
-                _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
-                                'PREMIUM_REQUIRED', metadata)
-                connection.commit()
-                return _make_vote_error('PREMIUM_REQUIRED',
-                                        'Voting requires a premium subscription.')
+            is_premium_user = cursor.fetchone()[0]
+            if not is_premium_user:
+                # Bootstrap: allow edits for free users who already voted on this matchup
+                from config import Config
+                if Config.BOOTSTRAP_FREE_VOTING_ENABLED:
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM votes
+                        WHERE user_id = %s AND matchup_id = %s
+                    """, (user_id, matchup_id))
+                    if cursor.fetchone()[0] == 0:
+                        # No existing votes — can't edit what doesn't exist
+                        cat_str = ','.join(categories)
+                        _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                        'PREMIUM_REQUIRED', metadata)
+                        connection.commit()
+                        return _make_vote_error('PREMIUM_REQUIRED',
+                                                'Voting requires a premium subscription.')
+                    # Has existing votes on this matchup — allow edit
+                else:
+                    cat_str = ','.join(categories)
+                    _log_vote_event(cursor, 'reject', user_id, matchup_id, cat_str,
+                                    'PREMIUM_REQUIRED', metadata)
+                    connection.commit()
+                    return _make_vote_error('PREMIUM_REQUIRED',
+                                            'Voting requires a premium subscription.')
 
             # Matchup validation
             cursor.execute("""
@@ -3603,6 +3660,208 @@ def get_active_matchups(page=1, per_page=12):
                 for row in cursor.fetchall()
             ]
             return matchups, total
+    finally:
+        connection.close()
+
+
+# ============================================
+# Engagement Bootstrap Functions
+# ============================================
+
+_featured_matchup_cache = _LeaderboardCache(ttl_seconds=600)  # 10-minute TTL
+
+
+def get_featured_matchup():
+    """
+    Get a single featured matchup for the homepage widget.
+    Priority: pinned > trending (most votes in 24h) > underserved (fewest total votes).
+    Returns dict or None.
+    """
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT m.matchup_id, m.post_a_id, m.post_b_id,
+                       m.pinned,
+                       ta.name AS tool_a_name, tb.name AS tool_b_name,
+                       ta.slug AS tool_a_slug, tb.slug AS tool_b_slug,
+                       pa.Title AS title_a,
+                       LEFT(REGEXP_REPLACE(pa.Content, '<[^>]+>', '', 'g'), 250) AS preview_a,
+                       pb.Title AS title_b,
+                       LEFT(REGEXP_REPLACE(pb.Content, '<[^>]+>', '', 'g'), 250) AS preview_b,
+                       COALESCE(vc.cnt, 0) AS total_votes,
+                       COALESCE(rc.cnt, 0) AS recent_votes
+                FROM matchups m
+                JOIN AITool ta ON m.tool_a = ta.tool_id
+                JOIN AITool tb ON m.tool_b = tb.tool_id
+                JOIN Post pa ON m.post_a_id = pa.postid
+                JOIN Post pb ON m.post_b_id = pb.postid
+                LEFT JOIN (
+                    SELECT matchup_id, COUNT(*) AS cnt
+                    FROM votes GROUP BY matchup_id
+                ) vc ON vc.matchup_id = m.matchup_id
+                LEFT JOIN (
+                    SELECT matchup_id, COUNT(*) AS cnt
+                    FROM votes
+                    WHERE voted_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                    GROUP BY matchup_id
+                ) rc ON rc.matchup_id = m.matchup_id
+                WHERE m.status = 'active'
+                ORDER BY
+                    m.pinned DESC NULLS LAST,
+                    COALESCE(rc.cnt, 0) DESC,
+                    COALESCE(vc.cnt, 0) ASC
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'matchup_id': row[0],
+                'post_a_id': row[1], 'post_b_id': row[2],
+                'pinned': row[3],
+                'tool_a_name': row[4], 'tool_b_name': row[5],
+                'tool_a_slug': row[6], 'tool_b_slug': row[7],
+                'title_a': row[8], 'preview_a': row[9],
+                'title_b': row[10], 'preview_b': row[11],
+                'total_votes': row[12], 'recent_votes': row[13]
+            }
+    except Exception as e:
+        logger.error(f"Error getting featured matchup: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def get_free_votes_this_week(user_id):
+    """Count distinct matchups a user has voted on this ISO week (Mon-Sun)."""
+    connection = get_connection()
+    if not connection:
+        return 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT matchup_id)
+                FROM votes
+                WHERE user_id = %s
+                  AND voted_at >= date_trunc('week', CURRENT_TIMESTAMP)
+            """, (user_id,))
+            return cursor.fetchone()[0]
+    except Exception:
+        return 0
+    finally:
+        connection.close()
+
+
+def toggle_matchup_pin(matchup_id):
+    """Toggle the pinned flag on a matchup. Returns new pinned value or None."""
+    connection = get_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE matchups SET pinned = NOT COALESCE(pinned, FALSE)
+                WHERE matchup_id = %s
+                RETURNING pinned
+            """, (matchup_id,))
+            row = cursor.fetchone()
+            connection.commit()
+            if row:
+                _featured_matchup_cache.invalidate_all()
+                return row[0]
+            return None
+    except Exception as e:
+        connection.rollback()
+        logger.error(f"Error toggling matchup pin: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def update_matchup_status(matchup_id, status):
+    """Update matchup status. Returns True on success."""
+    valid_statuses = ('active', 'closed', 'draft')
+    if status not in valid_statuses:
+        return False
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE matchups SET status = %s WHERE matchup_id = %s
+            """, (status, matchup_id))
+            connection.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        connection.rollback()
+        logger.error(f"Error updating matchup status: {e}")
+        return False
+    finally:
+        connection.close()
+
+
+def get_matchup_overview_stats():
+    """Get overview stats for admin matchup management."""
+    connection = get_connection()
+    if not connection:
+        return {}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'active') AS active_count,
+                    COUNT(*) FILTER (WHERE status = 'closed') AS closed_count,
+                    COUNT(*) FILTER (WHERE pinned = TRUE AND status = 'active') AS pinned_count,
+                    COUNT(*) AS total_count
+                FROM matchups
+            """)
+            row = cursor.fetchone()
+            cursor.execute("SELECT COUNT(*) FROM votes")
+            total_votes = cursor.fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(*) FROM votes
+                WHERE voted_at >= CURRENT_DATE
+            """)
+            votes_today = cursor.fetchone()[0]
+            return {
+                'active': row[0], 'closed': row[1],
+                'pinned': row[2], 'total': row[3],
+                'total_votes': total_votes,
+                'votes_today': votes_today
+            }
+    except Exception as e:
+        logger.error(f"Error getting matchup stats: {e}")
+        return {}
+    finally:
+        connection.close()
+
+
+def track_event(event_name, user_id=None, session_id=None, matchup_id=None, properties=None):
+    """Insert an analytics event into the analytics_events table."""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        import json as _json
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO analytics_events (event_name, user_id, session_id, matchup_id, properties)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (event_name, user_id, session_id, matchup_id,
+                  _json.dumps(properties) if properties else '{}'))
+            connection.commit()
+            return True
+    except Exception as e:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error tracking event '{event_name}': {e}")
+        return False
     finally:
         connection.close()
 

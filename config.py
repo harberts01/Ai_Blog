@@ -49,7 +49,11 @@ class Config:
     # Free tier limits
     FREE_POSTS_PER_MONTH = int(os.environ.get('FREE_POSTS_PER_MONTH', '5'))
     FREE_POST_DELAY_DAYS = int(os.environ.get('FREE_POST_DELAY_DAYS', '14'))
-    
+
+    # Bootstrap engagement settings (temporary free voting for discovery)
+    BOOTSTRAP_FREE_VOTING_ENABLED = os.environ.get('BOOTSTRAP_FREE_VOTING_ENABLED', 'true').lower() == 'true'
+    BOOTSTRAP_FREE_VOTES_PER_WEEK = int(os.environ.get('BOOTSTRAP_FREE_VOTES_PER_WEEK', '3'))
+
     # PostgreSQL Database settings
     # Support both Heroku's DATABASE_URL and individual env vars
     DATABASE_URL = os.environ.get('DATABASE_URL')

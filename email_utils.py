@@ -829,3 +829,52 @@ def get_provider_info():
         'enabled': Config.MAIL_ENABLED,
         'note': Config.SMTP_PROVIDERS.get(provider, {}).get('note', '')
     }
+
+
+def send_compare_challenge_email(app, matchup_data, recipients):
+    """
+    Send a compare challenge email for a featured matchup.
+
+    Args:
+        app: Flask app instance (for context)
+        matchup_data: dict with keys: topic, matchup_url, vote_count, preview_a, preview_b, site_url
+        recipients: list of email addresses
+    """
+    if not Config.MAIL_ENABLED:
+        logger.info("Email disabled — skipping compare challenge send")
+        return False
+
+    subject = f"AI Head-to-Head: {matchup_data.get('topic', 'New Matchup')} — Which AI nailed it?"
+
+    # Read and populate template
+    import os
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'emails', 'compare_challenge.html')
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+    except FileNotFoundError:
+        logger.error(f"Compare challenge email template not found at {template_path}")
+        return False
+
+    # Replace template variables
+    for key, value in matchup_data.items():
+        html_content = html_content.replace('{{' + key + '}}', str(value))
+
+    text_content = (
+        f"AI Head-to-Head: {matchup_data.get('topic', 'New Matchup')}\n\n"
+        f"Two AI tools wrote about the same topic. Read both and vote on which one nailed it.\n\n"
+        f"Vote now: {matchup_data.get('matchup_url', '')}\n\n"
+        f"{matchup_data.get('vote_count', 0)} people have voted so far.\n"
+    )
+
+    use_mailgun_api = (
+        Config.MAILGUN_API_KEY and Config.MAILGUN_DOMAIN
+        and getattr(Config, 'MAILGUN_USE_API', True)
+    )
+
+    if use_mailgun_api:
+        send_email_via_mailgun_api_async(app, recipients, subject, html_content, text_content)
+        return True
+    else:
+        logger.info("Compare challenge email: Mailgun API not configured, skipping.")
+        return False

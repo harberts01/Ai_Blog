@@ -1963,9 +1963,30 @@ def view_matchup(matchup_id):
             votes_locked = user_votes[0]['locked']
             earliest_vote_time = min(v['voted_at'] for v in user_votes)
 
-    # Build results data (only if user has voted AND is premium)
+    # Bootstrap free voting context
+    is_bootstrap = Config.BOOTSTRAP_FREE_VOTING_ENABLED
+    free_votes_used = 0
+    free_votes_limit = Config.BOOTSTRAP_FREE_VOTES_PER_WEEK
+    can_vote_free = False
+    week_resets_at = None
+
+    if user and not is_premium and is_bootstrap:
+        free_votes_used = db.get_free_votes_this_week(user_id)
+        # Already voted on this matchup doesn't count against limit
+        can_vote_free = has_voted or free_votes_used < free_votes_limit
+        # Calculate next Monday 00:00 UTC
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        days_until_monday = (7 - now.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        week_resets_at = (now + timedelta(days=days_until_monday)).replace(
+            hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
+
+    # Build results data (if user has voted AND has access)
     results = None
-    if has_voted and is_premium:
+    can_see_results = is_premium or (is_bootstrap and can_vote_free)
+    if has_voted and can_see_results:
         vote_counts = db.get_matchup_vote_counts(matchup_id)
         results = {}
         for cat in db.VOTE_CATEGORIES:
@@ -2006,7 +2027,12 @@ def view_matchup(matchup_id):
         total_vote_count=total_vote_count,
         earliest_vote_time=earliest_vote_time.isoformat() if earliest_vote_time else None,
         vote_lock_minutes=db.VOTE_LOCK_MINUTES,
-        vote_categories=db.VOTE_CATEGORIES
+        vote_categories=db.VOTE_CATEGORIES,
+        is_bootstrap=is_bootstrap,
+        can_vote_free=can_vote_free,
+        free_votes_used=free_votes_used,
+        free_votes_limit=free_votes_limit,
+        week_resets_at=week_resets_at
     )
 
 
@@ -2049,8 +2075,112 @@ def _map_votes_left_right(data_votes, matchup, position_a_is_left):
     return mapped, None
 
 
+# ============== Engagement Bootstrap API Routes ==============
+
+@app.route("/api/matchups/featured")
+def api_featured_matchup():
+    """API: Get the featured matchup for homepage widget (public, cached 10min)."""
+    cached = db._featured_matchup_cache.get('featured')
+    if cached:
+        data, age = cached
+        return jsonify({**data, 'cached': True, 'cache_age_seconds': round(age)})
+
+    matchup = db.get_featured_matchup()
+    if not matchup:
+        return jsonify({'success': False, 'error': 'No active matchups'}), 404
+
+    hook_lines = [
+        "Can you tell which AI writes better?",
+        "Two AIs wrote about the same topic. Which nailed it?",
+        f"{matchup['total_votes']} people have voted. Do you agree with them?",
+        "This matchup needs your vote. Who writes it better?",
+    ]
+    import random
+    hook = hook_lines[0] if matchup['total_votes'] == 0 else random.choice(hook_lines)
+
+    response_data = {
+        'success': True,
+        'matchup_id': matchup['matchup_id'],
+        'preview_a': (matchup.get('preview_a') or '')[:200],
+        'preview_b': (matchup.get('preview_b') or '')[:200],
+        'title_a': matchup['title_a'],
+        'title_b': matchup['title_b'],
+        'vote_count': matchup['total_votes'],
+        'hook': hook,
+        'url': f"/compare/{matchup['matchup_id']}",
+    }
+    db._featured_matchup_cache.set('featured', response_data)
+    return jsonify(response_data)
+
+
+@app.route("/api/analytics/event", methods=["POST"])
+@limiter.limit("60 per minute")
+def api_track_event():
+    """Track a client-side analytics event."""
+    data = request.get_json()
+    if not data or 'event' not in data:
+        return jsonify({'error': 'event required'}), 400
+
+    user = get_current_user()
+    db.track_event(
+        event_name=data['event'],
+        user_id=user['id'] if user else None,
+        session_id=data.get('session_id'),
+        matchup_id=data.get('matchup_id'),
+        properties=data.get('properties')
+    )
+    return jsonify({'success': True}), 201
+
+
+@app.route("/api/admin/matchups/seed", methods=["POST"])
+@admin_required
+def api_admin_seed_matchup():
+    """Admin: Create a matchup from two post IDs."""
+    data = request.get_json()
+    if not data or 'post_a_id' not in data or 'post_b_id' not in data:
+        return jsonify({'error': 'post_a_id and post_b_id required'}), 400
+    matchup_id = db.create_matchup(data['post_a_id'], data['post_b_id'],
+                                    prompt_id=data.get('prompt_id'))
+    if not matchup_id:
+        return jsonify({'error': 'Failed to create matchup (posts may be from same tool or matchup already exists)'}), 409
+    return jsonify({'success': True, 'matchup_id': matchup_id}), 201
+
+
+@app.route("/api/admin/matchups/<int:matchup_id>/pin", methods=["PATCH"])
+@admin_required
+def api_admin_toggle_pin(matchup_id):
+    """Admin: Toggle pinned flag on a matchup."""
+    result = db.toggle_matchup_pin(matchup_id)
+    if result is None:
+        return jsonify({'error': 'Matchup not found'}), 404
+    return jsonify({'success': True, 'pinned': result})
+
+
+@app.route("/api/admin/matchups/<int:matchup_id>/status", methods=["PATCH"])
+@admin_required
+def api_admin_update_matchup_status(matchup_id):
+    """Admin: Change matchup status (active, closed, draft)."""
+    data = request.get_json()
+    status = data.get('status') if data else None
+    if not status:
+        return jsonify({'error': 'status required'}), 400
+    ok = db.update_matchup_status(matchup_id, status)
+    if not ok:
+        return jsonify({'error': 'Failed to update (invalid status or not found)'}), 400
+    return jsonify({'success': True, 'status': status})
+
+
+@app.route("/api/admin/matchups/stats")
+@admin_required
+def api_admin_matchup_stats():
+    """Admin: Get matchup overview stats."""
+    return jsonify(db.get_matchup_overview_stats())
+
+
+# ============== Vote API Routes ==============
+
 @app.route("/api/matchups/<int:matchup_id>/votes", methods=["POST"])
-@premium_required
+@login_required
 @limiter.limit("30 per minute")
 def api_batch_vote_matchup(matchup_id):
     """API: Submit a batch of votes on a matchup (atomic)."""
@@ -2110,7 +2240,7 @@ def api_batch_vote_matchup(matchup_id):
 
 
 @app.route("/api/matchups/<int:matchup_id>/votes", methods=["PATCH"])
-@premium_required
+@login_required
 @limiter.limit("30 per minute")
 def api_batch_edit_votes(matchup_id):
     """API: Edit existing votes within the lock window (atomic)."""
@@ -2170,7 +2300,7 @@ def api_batch_edit_votes(matchup_id):
 
 
 @app.route("/api/matchups/<int:matchup_id>/results")
-@premium_required
+@login_required
 def api_matchup_results(matchup_id):
     """API: Get matchup results (only if user has voted)"""
     user = get_current_user()

@@ -8,6 +8,7 @@
       name="description"
       content="{% block description %}Stay updated with the latest AI-generated content from ChatGPT, Claude, Gemini, Midjourney, and GitHub Copilot.{% endblock %}"
     />
+    {% block og_tags %}{% endblock %}
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -387,6 +388,30 @@
       </div>
     </div>
     {% endif %}
+
+    <!-- Compare Feature Announcement Banner -->
+    <div class="alert alert-primary alert-dismissible text-center py-2 mb-0 rounded-0 border-start-0 border-end-0" id="compare-announcement" style="display:none;">
+      <div class="container">
+        <i class="bi bi-fire text-warning me-1"></i>
+        <strong>New:</strong> AI Head-to-Head is live! Compare AI-generated posts and vote on which tool writes best.
+        <a href="{{ url_for('compare_page') }}" class="alert-link ms-1">Try it now</a>
+        <button type="button" class="btn-close btn-close-sm" aria-label="Close" onclick="dismissCompareAnnouncement()"></button>
+      </div>
+    </div>
+    <script>
+    (function() {
+      var KEY = 'compare_announcement_dismissed';
+      if (!localStorage.getItem(KEY)) {
+        var el = document.getElementById('compare-announcement');
+        if (el) el.style.display = '';
+      }
+      window.dismissCompareAnnouncement = function() {
+        var el = document.getElementById('compare-announcement');
+        if (el) el.style.display = 'none';
+        localStorage.setItem(KEY, '1');
+      };
+    })();
+    </script>
 
     <!-- Main Content -->
     <main>{% block content %}{% endblock %}</main>

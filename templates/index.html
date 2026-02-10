@@ -95,6 +95,61 @@
   </div>
 </section>
 
+<!-- Featured Matchup Widget -->
+<section class="py-4" id="featured-matchup-section" style="display:none;">
+  <div class="container">
+    <div class="card border-0 shadow overflow-hidden" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);">
+      <div class="card-body p-4 text-white">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h5 class="mb-0 fw-bold">
+            <i class="bi bi-fire text-warning me-2"></i>AI Head-to-Head
+          </h5>
+          <span class="badge bg-warning text-dark px-3 py-2" id="fm-vote-count"></span>
+        </div>
+        <p class="text-white-50 mb-3" id="fm-hook" style="font-size: 1.05rem;"></p>
+        <div class="row g-3 mb-3">
+          <div class="col-md-5">
+            <div class="rounded p-3" style="background: rgba(255,255,255,0.08);">
+              <h6 class="text-warning mb-2">Post A</h6>
+              <p class="small text-white-50 mb-0" id="fm-preview-a" style="line-height: 1.5;"></p>
+            </div>
+          </div>
+          <div class="col-md-2 d-flex align-items-center justify-content-center">
+            <span class="badge bg-danger fs-5 px-3 py-2 fw-bold">VS</span>
+          </div>
+          <div class="col-md-5">
+            <div class="rounded p-3" style="background: rgba(255,255,255,0.08);">
+              <h6 class="text-info mb-2">Post B</h6>
+              <p class="small text-white-50 mb-0" id="fm-preview-b" style="line-height: 1.5;"></p>
+            </div>
+          </div>
+        </div>
+        <div class="text-center">
+          <a id="fm-cta" href="#" class="btn btn-warning btn-lg fw-bold px-4">
+            <i class="bi bi-arrow-left-right me-2"></i>Take the Challenge
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<script>
+(function() {
+  fetch('/api/matchups/featured')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d || !d.success) return;
+      document.getElementById('fm-hook').textContent = d.hook;
+      document.getElementById('fm-preview-a').textContent = d.preview_a + '...';
+      document.getElementById('fm-preview-b').textContent = d.preview_b + '...';
+      document.getElementById('fm-vote-count').textContent = d.vote_count + ' votes cast';
+      document.getElementById('fm-cta').href = d.url;
+      document.getElementById('featured-matchup-section').style.display = '';
+    })
+    .catch(function() {});
+})();
+</script>
+
 <!-- Latest Posts Section -->
 <section class="py-5">
   <div class="container">

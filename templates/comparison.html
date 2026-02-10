@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Post A vs Post B — Blind Comparison{% endblock %}
-{% block description %}Compare two AI-generated posts side by side and vote on which is better.{% endblock %}
+{% block description %}Compare two AI-generated posts side by side and vote on which is better. {{ total_vote_count }} votes cast so far.{% endblock %}
+{% block og_tags %}
+<meta property="og:title" content="AI Head-to-Head: Which AI Writes Better?" />
+<meta property="og:description" content="Two AIs wrote about the same topic. {{ total_vote_count }} people have voted. Cast your vote now." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="{{ config.SITE_URL }}/compare/{{ matchup.matchup_id }}" />
+<meta property="og:image" content="{{ config.SITE_URL }}/static/img/og-compare-default.svg" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="AI Head-to-Head: Which AI Writes Better?" />
+<meta name="twitter:description" content="Two AIs wrote about the same topic. {{ total_vote_count }} votes so far. Cast yours." />
+<meta name="twitter:image" content="{{ config.SITE_URL }}/static/img/og-compare-default.svg" />
+{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -174,8 +185,8 @@
         <i class="bi bi-lock me-2"></i>
         <a href="{{ url_for('login', next=request.url) }}">Log in</a> to vote on this comparison.
       </div>
-      {% elif not is_premium %}
-      <!-- Free user: disabled voting panel + blurred results teaser -->
+      {% elif not is_premium and not (is_bootstrap and can_vote_free) %}
+      <!-- Free user: limit reached OR bootstrap disabled -->
       {% set cat_descriptions_free = {
         'writing_quality': 'Grammar, flow, and readability',
         'accuracy': 'Factual correctness and depth',
@@ -241,6 +252,17 @@
       </div>
 
       {% include "components/_upgrade_modal.html" %}
+
+      {% elif not is_premium and is_bootstrap and can_vote_free %}
+      <!-- Free user within bootstrap limit: can vote -->
+      <div class="alert alert-info text-center mb-3 py-2">
+        <i class="bi bi-gift me-2"></i>
+        <strong>Free Comparison!</strong>
+        {{ free_votes_limit - free_votes_used }} of {{ free_votes_limit }} free comparisons remaining this week.
+      </div>
+      {% include "components/_voting_panel.html" %}
+      {% include "components/_upgrade_modal.html" %}
+
       {% elif has_voted and votes_locked %}
       <!-- Voted & locked — show results only -->
       <div class="text-center mb-3">
@@ -250,62 +272,8 @@
         {% include "components/_vote_results.html" ignore missing %}
       </div>
       {% else %}
-      <!-- Can vote (or edit within window) -->
-      <div class="voting-panel {% if not has_voted %}gated{% endif %}" id="voting-panel">
-        <div class="gate-message" id="gate-message">
-          <i class="bi bi-book me-1"></i> Read both posts before voting.
-        </div>
-
-        {% if has_voted and not votes_locked %}
-        <div class="text-center mb-2">
-          <span class="badge bg-warning text-dark countdown-badge" id="edit-countdown"></span>
-        </div>
-        {% endif %}
-
-        <div class="vote-categories" id="vote-categories">
-          {% set cat_descriptions = {
-            'writing_quality': 'Grammar, flow, and readability',
-            'accuracy': 'Factual correctness and depth',
-            'creativity': 'Originality and unique angles',
-            'usefulness': 'Practical value and actionable insights',
-            'overall': 'Your holistic preference'
-          } %}
-          {% for cat in vote_categories %}
-          <div class="vote-card" data-category="{{ cat }}">
-            <h6>{{ cat.replace('_', ' ').title() }}</h6>
-            <div class="vote-desc">{{ cat_descriptions[cat] }}</div>
-            <div class="d-flex gap-1 justify-content-center">
-              <button class="vote-btn" data-winner="left"
-                onclick="selectVote('{{ cat }}', 'left', this)">Post A</button>
-              <button class="vote-btn" data-winner="right"
-                onclick="selectVote('{{ cat }}', 'right', this)">Post B</button>
-            </div>
-            <!-- Results overlay (hidden until reveal) -->
-            <div class="result-display mt-2" style="display:none;">
-              <div class="result-bar-wrap">
-                <div class="result-bar-a" id="bar-a-{{ cat }}" style="width:0%"></div>
-                <div class="result-bar-b" id="bar-b-{{ cat }}" style="width:0%"></div>
-              </div>
-              <div class="d-flex justify-content-between small">
-                <span id="pct-a-{{ cat }}"></span>
-                <span id="pct-b-{{ cat }}"></span>
-              </div>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <!-- Submit Bar -->
-      <div class="submit-bar" id="submit-bar" {% if has_voted and votes_locked %}style="display:none;"{% endif %}>
-        <div class="d-flex justify-content-center align-items-center gap-3">
-          <button class="btn btn-primary px-4" id="submit-btn" disabled onclick="submitVotes()">
-            <span id="submit-text">Submit Votes (0 of 5)</span>
-            <span id="submit-spinner" class="spinner-border spinner-border-sm ms-1" style="display:none;" role="status"></span>
-          </button>
-        </div>
-        <div id="vote-error" class="alert alert-danger mt-2 mx-auto text-center small" style="display:none; max-width: 500px;" role="alert"></div>
-      </div>
+      <!-- Can vote (or edit within window) — premium users -->
+      {% include "components/_voting_panel.html" %}
       {% endif %}
     </div>
 
@@ -318,6 +286,26 @@
         <i class="bi bi-bar-chart me-1"></i>View Dashboard
       </a>
     </div>
+
+    <!-- Share Buttons (shown after voting) -->
+    <div id="share-buttons" style="display:none;" class="text-center mt-3">
+      <p class="text-muted small mb-2">Share this matchup</p>
+      <div class="d-flex gap-2 justify-content-center flex-wrap">
+        <button class="btn btn-sm btn-outline-secondary" onclick="copyMatchupLink()">
+          <i class="bi bi-link-45deg me-1"></i>Copy Link
+        </button>
+        <a id="twitter-share" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-twitter-x me-1"></i>Share on X
+        </a>
+        <button class="btn btn-sm btn-outline-success" id="web-share-btn" style="display:none;" onclick="webShare()">
+          <i class="bi bi-share me-1"></i>Share
+        </button>
+      </div>
+      <div id="copy-toast" class="mt-2" style="display:none;">
+        <span class="badge bg-success"><i class="bi bi-check me-1"></i>Copied!</span>
+      </div>
+    </div>
+
     {% if is_premium %}
     <div id="vote-history-nudge" style="display:none;" class="text-center mt-2">
       <small class="text-muted">
@@ -344,6 +332,10 @@
   const VOTE_LOCK_MINUTES = {{ vote_lock_minutes }};
   const EARLIEST_VOTE_TIME = {{ ("'" + earliest_vote_time + "'")|safe if earliest_vote_time else 'null' }};
   const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
+  const IS_BOOTSTRAP = {{ 'true' if is_bootstrap else 'false' }};
+  const CAN_VOTE_FREE = {{ 'true' if can_vote_free else 'false' }};
+  const FREE_VOTES_USED = {{ free_votes_used|default(0) }};
+  const FREE_VOTES_LIMIT = {{ free_votes_limit|default(3) }};
   const EXISTING_VOTES = {{ user_vote_map|tojson }};
 
   // Tool names (only used after reveal)
@@ -362,7 +354,7 @@
   let pageLoadTime = Date.now();
 
   // ===== Free User: disabled panel click handler =====
-  if (!IS_PREMIUM) {
+  if (!IS_PREMIUM && !CAN_VOTE_FREE) {
     let freeVoteClicks = 0;
     const disabledPanel = document.getElementById('voting-panel-disabled');
     if (disabledPanel) {
@@ -400,7 +392,7 @@
     }
   }
 
-  if (!HAS_VOTED && IS_PREMIUM) {
+  if (!HAS_VOTED && (IS_PREMIUM || CAN_VOTE_FREE)) {
     // Timer: 30 seconds
     setTimeout(openVoteGate, 30000);
 
@@ -550,7 +542,13 @@
     INVALID_WINNER: (e) => showInlineError(e.message || 'Invalid vote selection.'),
     INVALID_PAYLOAD: (e) => showInlineError(e.message || 'Invalid vote data.'),
     DUPLICATE_CATEGORY: (e) => showInlineError(e.message || 'Duplicate category in submission.'),
-    NEW_VOTE_VIA_PATCH: (e) => showInlineError(e.message || 'Cannot add new categories when editing.')
+    NEW_VOTE_VIA_PATCH: (e) => showInlineError(e.message || 'Cannot add new categories when editing.'),
+    FREE_LIMIT_REACHED: (error) => {
+      var limit = error.details && error.details.limit || 3;
+      showInlineError("You've used all " + limit + " free comparisons this week. Upgrade for unlimited voting!");
+      setTimeout(function() { window.showUpgradeModal && window.showUpgradeModal('free_limit'); }, 1500);
+      trackEvent('free_limit_shown', {used_count: error.details && error.details.used});
+    }
   };
 
   // ===== Handle successful vote response =====
@@ -564,6 +562,8 @@
     if (data.edit_window_expires_at) {
       startEditCountdown(new Date(data.edit_window_expires_at).getTime());
     }
+    showShareButtons();
+    trackEvent('compare_vote_submitted', {categories_count: Object.keys(selections).length});
   }
 
   // ===== Submit =====
@@ -729,6 +729,72 @@
   if (scrollL && scrollR) {
     scrollL.addEventListener('scroll', () => syncHandler(scrollL, scrollR));
     scrollR.addEventListener('scroll', () => syncHandler(scrollR, scrollL));
+  }
+
+  // ===== Analytics Tracking =====
+  function trackEvent(name, props) {
+    fetch('/api/analytics/event', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
+      body: JSON.stringify({event: name, matchup_id: MATCHUP_ID, properties: props || {}})
+    }).catch(function() {});
+  }
+
+  // Track page view
+  trackEvent('compare_view_loaded', {
+    source: document.referrer.includes('/compare') ? 'browse' :
+            document.referrer.includes('//') && !document.referrer.includes(location.host) ? 'share' :
+            document.referrer === '' ? 'direct' : 'internal'
+  });
+
+  // ===== Share Functions =====
+  function showShareButtons() {
+    var el = document.getElementById('share-buttons');
+    if (el) el.style.display = '';
+    var twitterUrl = 'https://twitter.com/intent/tweet?text=' +
+      encodeURIComponent('I just voted in an AI Head-to-Head! Which AI writes better? Cast your vote:') +
+      '&url=' + encodeURIComponent(window.location.href);
+    var twitterLink = document.getElementById('twitter-share');
+    if (twitterLink) twitterLink.href = twitterUrl;
+    if (navigator.share) {
+      var webBtn = document.getElementById('web-share-btn');
+      if (webBtn) webBtn.style.display = '';
+    }
+    trackEvent('compare_results_viewed');
+  }
+
+  window.copyMatchupLink = function() {
+    navigator.clipboard.writeText(window.location.href).then(function() {
+      var toast = document.getElementById('copy-toast');
+      if (toast) {
+        toast.style.display = '';
+        setTimeout(function() { toast.style.display = 'none'; }, 2500);
+      }
+    });
+    trackEvent('compare_share_clicked', {share_method: 'copy'});
+  };
+
+  window.webShare = function() {
+    if (navigator.share) {
+      navigator.share({
+        title: 'AI Head-to-Head: Which AI Writes Better?',
+        url: window.location.href
+      });
+      trackEvent('compare_share_clicked', {share_method: 'native'});
+    }
+  };
+
+  // Track twitter share clicks
+  var twitterLink = document.getElementById('twitter-share');
+  if (twitterLink) {
+    twitterLink.addEventListener('click', function() {
+      trackEvent('compare_share_clicked', {share_method: 'twitter'});
+    });
+  }
+
+  // Show share buttons if already voted and results are visible
+  if (HAS_VOTED && INITIAL_RESULTS) {
+    showShareButtons();
   }
 })();
 </script>

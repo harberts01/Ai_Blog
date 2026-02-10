@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <text x="600" y="200" text-anchor="middle" fill="#ffc107" font-family="Arial, sans-serif" font-weight="700" font-size="64">AI Head-to-Head</text>
+  <text x="600" y="300" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="400" font-size="36">Which AI Writes Better?</text>
+  <rect x="200" y="360" width="250" height="120" rx="12" fill="rgba(255,255,255,0.1)"/>
+  <text x="325" y="430" text-anchor="middle" fill="#ffc107" font-family="Arial, sans-serif" font-weight="600" font-size="28">Post A</text>
+  <text x="600" y="430" text-anchor="middle" fill="#dc3545" font-family="Arial, sans-serif" font-weight="700" font-size="40">VS</text>
+  <rect x="750" y="360" width="250" height="120" rx="12" fill="rgba(255,255,255,0.1)"/>
+  <text x="875" y="430" text-anchor="middle" fill="#0dcaf0" font-family="Arial, sans-serif" font-weight="600" font-size="28">Post B</text>
+  <text x="600" y="560" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="Arial, sans-serif" font-weight="400" font-size="24">Vote now at AI Blog Daily</text>
+</svg>

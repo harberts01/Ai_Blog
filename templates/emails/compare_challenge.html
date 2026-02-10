@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Head-to-Head Challenge</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f4f4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f4;">
+    <tr>
+      <td align="center" style="padding: 30px 10px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px 40px; text-align:center;">
+              <h1 style="color:#ffc107; margin:0; font-size:24px;">AI Head-to-Head</h1>
+              <p style="color:rgba(255,255,255,0.7); margin:8px 0 0; font-size:14px;">A new matchup is live</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding: 30px 40px;">
+              <h2 style="color:#1a1a2e; margin:0 0 15px; font-size:20px;">{{topic}}</h2>
+              <p style="color:#555; font-size:15px; line-height:1.6; margin:0 0 20px;">
+                Two different AI tools wrote about the same topic. Read both posts side-by-side, then vote on which one nailed it.
+              </p>
+
+              <!-- VS Card -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:25px;">
+                <tr>
+                  <td width="45%" style="background:#f8f9fa; border-radius:8px; padding:15px; vertical-align:top;">
+                    <p style="color:#ffc107; font-weight:600; margin:0 0 5px; font-size:13px;">POST A</p>
+                    <p style="color:#666; font-size:13px; line-height:1.5; margin:0;">{{preview_a}}</p>
+                  </td>
+                  <td width="10%" style="text-align:center; vertical-align:middle;">
+                    <span style="background:#dc3545; color:#fff; padding:6px 10px; border-radius:4px; font-weight:700; font-size:13px;">VS</span>
+                  </td>
+                  <td width="45%" style="background:#f8f9fa; border-radius:8px; padding:15px; vertical-align:top;">
+                    <p style="color:#0dcaf0; font-weight:600; margin:0 0 5px; font-size:13px;">POST B</p>
+                    <p style="color:#666; font-size:13px; line-height:1.5; margin:0;">{{preview_b}}</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center">
+                    <a href="{{matchup_url}}" style="display:inline-block; background:#ffc107; color:#1a1a2e; padding:14px 32px; border-radius:6px; text-decoration:none; font-weight:700; font-size:16px;">
+                      Take the Challenge
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color:#888; font-size:13px; text-align:center; margin:20px 0 0;">
+                So far, <strong>{{vote_count}}</strong> people have voted. Add your voice.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8f9fa; padding:20px 40px; text-align:center; border-top:1px solid #eee;">
+              <p style="color:#999; font-size:12px; margin:0;">
+                New matchups drop regularly. Don't miss the next one.<br>
+                <a href="{{site_url}}" style="color:#6c757d;">AI Blog Daily</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
