@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Post A vs Post B — Blind Comparison{% endblock %}
+{% block title %}{{ left_post.category or right_post.category or 'Blind Comparison' }} — AI Head-to-Head{% endblock %}
 {% block description %}Compare two AI-generated posts side by side and vote on which is better. {{ total_vote_count }} votes cast so far.{% endblock %}
 {% block og_tags %}
 <meta property="og:title" content="AI Head-to-Head: Which AI Writes Better?" />
@@ -122,14 +122,9 @@
       </div>
       <div class="text-center">
         <h1 class="h4 mb-0">
-          <span class="blind-label">Post A vs Post B</span>
+          <span class="blind-label">{{ left_post.category or right_post.category or 'Blind Comparison' }}</span>
           <span class="tool-name-reveal" id="header-tool-names"></span>
         </h1>
-        {% if left_post.category or right_post.category %}
-        <small class="text-muted">
-          <i class="bi bi-tag me-1"></i>{{ left_post.category or right_post.category }}
-        </small>
-        {% endif %}
         {% if matchup.prompt_id %}
         <small class="text-muted d-block">Same prompt comparison</small>
         {% endif %}
