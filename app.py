@@ -73,6 +73,8 @@ limiter = Limiter(
 
 @limiter.request_filter
 def _is_whitelisted():
+    if request.path.startswith('/static/'):
+        return True
     return get_remote_address() in app.config.get('RATE_LIMIT_WHITELIST', [])
 
 
