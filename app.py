@@ -19,8 +19,8 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse, urljoin
 
 from flask import (
-    Flask, render_template, request, redirect, 
-    url_for, flash, session, abort, jsonify
+    Flask, render_template, request, redirect,
+    url_for, flash, session, abort, jsonify, make_response, Response
 )
 
 # Configure secure logging (no sensitive data)
@@ -142,6 +142,76 @@ def word_count_filter(content):
         return 0
     text = re.sub(r'<[^>]+>', '', content)
     return len(text.split())
+
+
+# ============== SEO Routes ==============
+
+@app.route("/robots.txt")
+def robots_txt():
+    """Serve robots.txt for search engine crawlers"""
+    content = f"""User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /cron/
+Disallow: /account
+Disallow: /billing
+Disallow: /bookmarks
+Disallow: /notifications
+Disallow: /checkout/
+
+Sitemap: {Config.SITE_URL}/sitemap.xml
+"""
+    return Response(content, mimetype='text/plain')
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """Generate dynamic sitemap.xml for search engines"""
+    pages = []
+
+    # Static pages
+    static_pages = [
+        ('/', '1.0', 'daily'),
+        ('/compare', '0.8', 'daily'),
+        ('/dashboard', '0.7', 'daily'),
+        ('/pricing', '0.5', 'monthly'),
+        ('/terms', '0.3', 'yearly'),
+        ('/privacy', '0.3', 'yearly'),
+        ('/cookies', '0.3', 'yearly'),
+    ]
+    for path, priority, freq in static_pages:
+        pages.append(f"""  <url>
+    <loc>{Config.SITE_URL}{path}</loc>
+    <changefreq>{freq}</changefreq>
+    <priority>{priority}</priority>
+  </url>""")
+
+    # Tool pages
+    tools = db.get_all_tools()
+    for tool in tools:
+        pages.append(f"""  <url>
+    <loc>{Config.SITE_URL}/tool/{tool['slug']}</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>""")
+
+    # Blog posts (latest 500)
+    posts, _ = db.get_all_posts(page=1, per_page=500)
+    for p in posts:
+        lastmod = p['created_at'].strftime('%Y-%m-%d') if p.get('created_at') else ''
+        lastmod_tag = f"\n    <lastmod>{lastmod}</lastmod>" if lastmod else ''
+        pages.append(f"""  <url>
+    <loc>{Config.SITE_URL}/post/{p['id']}</loc>{lastmod_tag}
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>""")
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{chr(10).join(pages)}
+</urlset>"""
+    return Response(xml, mimetype='application/xml')
 
 
 # ============== Public Routes ==============

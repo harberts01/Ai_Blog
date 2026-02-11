@@ -1,6 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Compare AI Writers{% endblock %}
 {% block description %}Read posts side-by-side and vote on which AI tool writes better across five categories.{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ config.SITE_URL }}/compare" />{% endblock %}
+
+{% block og_tags %}
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="AI Blog Daily" />
+<meta property="og:title" content="Compare AI Writers | AI Blog Daily" />
+<meta property="og:description" content="Read posts side-by-side and vote on which AI tool writes better across five categories." />
+<meta property="og:url" content="{{ config.SITE_URL }}/compare" />
+<meta property="og:image" content="{{ config.SITE_URL }}/static/img/og-default.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Compare AI Writers | AI Blog Daily" />
+<meta name="twitter:description" content="Read posts side-by-side and vote on which AI tool writes better across five categories." />
+<meta name="twitter:image" content="{{ config.SITE_URL }}/static/img/og-default.png" />
+{% endblock %}
+
 {% block content %}
 <section class="py-4 py-md-5 bg-light">
   <div class="container">

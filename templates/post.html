@@ -1,6 +1,65 @@
-{% extends "base.html" %} {% block title %}{{ post.title }}{% endblock %} {%
-block description %}{{ post.content|striptags|truncate(160) }}{% endblock %} {%
-block content %}
+{% extends "base.html" %}
+{% set post_url = config.SITE_URL ~ url_for('post', post_id=post.id) %}
+{% set post_desc = post.content|striptags|truncate(160) %}
+{% set post_image = config.SITE_URL ~ '/static/img/og-default.png' %}
+
+{% block title %}{{ post.title }}{% endblock %}
+{% block description %}{{ post_desc }}{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ post_url }}" />{% endblock %}
+
+{% block og_tags %}
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="AI Blog Daily" />
+<meta property="og:title" content="{{ post.title }}" />
+<meta property="og:description" content="{{ post_desc }}" />
+<meta property="og:url" content="{{ post_url }}" />
+<meta property="og:image" content="{{ post_image }}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+{% if post.created_at %}
+<meta property="article:published_time" content="{{ post.created_at.isoformat() }}" />
+{% endif %}
+{% if post.tool_name %}
+<meta property="article:author" content="{{ post.tool_name }}" />
+<meta property="article:section" content="{{ post.category }}" />
+{% endif %}
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ post.title }}" />
+<meta name="twitter:description" content="{{ post_desc }}" />
+<meta name="twitter:image" content="{{ post_image }}" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": {{ post.title|tojson }},
+  "description": {{ post_desc|tojson }},
+  "url": {{ post_url|tojson }},
+  "image": {{ post_image|tojson }},
+  "datePublished": "{{ post.created_at.isoformat() if post.created_at else '' }}",
+  "author": {
+    "@type": "Organization",
+    "name": {{ (post.tool_name or 'AI Blog Daily')|tojson }}
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "AI Blog Daily",
+    "url": {{ config.SITE_URL|tojson }},
+    "logo": {
+      "@type": "ImageObject",
+      "url": "{{ config.SITE_URL }}/static/img/og-default.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": {{ post_url|tojson }}
+  }{% if post.category %},
+  "articleSection": {{ post.category|tojson }}{% endif %}
+}
+</script>
+{% endblock %}
+
+{% block content %}
 <!-- Reading Progress Bar -->
 <div class="reading-progress" id="readingProgress"></div>
 
@@ -220,22 +279,25 @@ block content %}
             <span class="fw-semibold">Share this post:</span>
             <div class="d-flex gap-2">
               <a
-                href="https://twitter.com/intent/tweet?text={{ post.title|urlencode }}"
+                href="https://twitter.com/intent/tweet?text={{ post.title|urlencode }}&url={{ post_url|urlencode }}"
                 target="_blank"
+                rel="noopener noreferrer"
                 class="btn btn-outline-dark btn-sm"
               >
                 <i class="bi bi-twitter-x"></i>
               </a>
               <a
-                href="https://www.linkedin.com/sharing/share-offsite/?url="
+                href="https://www.linkedin.com/sharing/share-offsite/?url={{ post_url|urlencode }}"
                 target="_blank"
+                rel="noopener noreferrer"
                 class="btn btn-outline-dark btn-sm"
               >
                 <i class="bi bi-linkedin"></i>
               </a>
               <a
-                href="https://www.facebook.com/sharer/sharer.php?u="
+                href="https://www.facebook.com/sharer/sharer.php?u={{ post_url|urlencode }}"
                 target="_blank"
+                rel="noopener noreferrer"
                 class="btn btn-outline-dark btn-sm"
               >
                 <i class="bi bi-facebook"></i>
