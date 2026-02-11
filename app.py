@@ -79,6 +79,10 @@ def _is_whitelisted():
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses"""
+    # Skip restrictive headers for static image files so crawlers (Facebook, Twitter) can fetch them
+    if request.path.startswith('/static/img/'):
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-XSS-Protection'] = '1; mode=block'

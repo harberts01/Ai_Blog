@@ -21,6 +21,7 @@
     <meta property="og:image" content="{{ config.SITE_URL }}/static/img/og-default.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    {% if config.FB_APP_ID %}<meta property="fb:app_id" content="{{ config.FB_APP_ID }}" />{% endif %}
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AI Blog Daily | Top AI Tools Blog" />

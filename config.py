@@ -211,6 +211,7 @@ class Config:
     # Site settings
     SITE_URL = os.environ.get('SITE_URL', 'https://www.aiblogdaily.com')
     SITE_NAME = 'AI Blog Daily'
+    FB_APP_ID = os.environ.get('FB_APP_ID', '')
     
     # AI Tools configuration with native providers
     AI_TOOLS = {
