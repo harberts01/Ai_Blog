@@ -146,6 +146,15 @@ def word_count_filter(content):
 
 # ============== SEO Routes ==============
 
+@app.route("/google230f2d878a8f4537.html")
+def google_site_verification():
+    """Serve Google Search Console verification file"""
+    return Response(
+        "google-site-verification: google230f2d878a8f4537.html",
+        mimetype='text/html'
+    )
+
+
 @app.route("/robots.txt")
 def robots_txt():
     """Serve robots.txt for search engine crawlers"""
