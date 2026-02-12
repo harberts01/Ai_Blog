@@ -2841,8 +2841,21 @@ html:not([data-theme="dark"]) #navbarNav .theme-label:first-child {
   color: var(--primary-color);
 }
 
-/* Badge */
+/* Badges */
 .feed-badge-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 50px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+
+.feed-badge-premium {
   display: inline-flex;
   align-items: center;
   padding: 0.15rem 0.5rem;

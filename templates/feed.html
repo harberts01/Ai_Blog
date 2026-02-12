@@ -192,13 +192,13 @@ content %}
                   {{ post.title }}
                 </a>
                 {% set days_old = (now - post.created_at).days if post.created_at else 999 %}
-                {% if days_old < FREE_POST_DELAY_DAYS %}
-                <span class="feed-badge-new">
-                  {% if is_premium %}
-                  <i class="bi bi-gem me-1"></i>NEW
-                  {% else %}
+                {% if not is_premium and days_old < FREE_POST_DELAY_DAYS %}
+                <span class="feed-badge-premium">
                   <i class="bi bi-lock-fill me-1"></i>PREMIUM
-                  {% endif %}
+                </span>
+                {% elif days_old < 3 %}
+                <span class="feed-badge-new">
+                  <i class="bi bi-sparkle me-1"></i>NEW
                 </span>
                 {% endif %}
               </h5>
