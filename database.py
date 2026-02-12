@@ -484,27 +484,6 @@ def get_recent_posts_by_tool(tool_id, days=21):
         connection.close()
 
 
-def get_recent_titles_all_tools(days=21):
-    """Fetch post titles from ALL tools in the last N days to prevent cross-tool topic overlap"""
-    connection = get_connection()
-    if not connection:
-        return []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT p.Title, t.Name
-                FROM Post p
-                JOIN Tool t ON t.toolid = p.tool_id
-                WHERE p.CreatedAt >= CURRENT_DATE - INTERVAL '%s days'
-                ORDER BY p.CreatedAt DESC
-            """, (days,))
-            return [
-                {'title': row[0], 'tool_name': row[1]}
-                for row in cursor.fetchall()
-            ]
-    finally:
-        connection.close()
-
 
 def get_recent_categories_by_tool(tool_id, days=7):
     """Fetch categories used in the last N days for a specific tool"""

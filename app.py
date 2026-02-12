@@ -1332,8 +1332,13 @@ def admin_generate_single_post(tool_slug):
     import threading
     
     def generate_async():
-        ai_generators.generate_post_for_tool(tool_slug, app=app)
-    
+        try:
+            ai_generators.generate_post_for_tool(tool_slug, app=app)
+        except Exception as e:
+            print(f"❌ Error generating post for {tool_slug}: {e}")
+            import traceback
+            traceback.print_exc()
+
     thread = threading.Thread(target=generate_async, daemon=True)
     thread.start()
     

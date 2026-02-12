@@ -187,7 +187,7 @@ def _get_xai_client():
 
 # ============== Prompt Building ==============
 
-def build_prompt(tool_name, style, recent_titles, available_categories, other_tool_titles=None):
+def build_prompt(tool_name, style, recent_titles, available_categories):
     """
     Build system and user prompts for content generation.
 
@@ -196,7 +196,6 @@ def build_prompt(tool_name, style, recent_titles, available_categories, other_to
         style: Writing style (e.g., 'informative', 'creative')
         recent_titles: List of recent post titles to avoid
         available_categories: Categories available for use
-        other_tool_titles: Titles from other AI tools to avoid topic overlap
 
     Returns:
         Tuple of (system_prompt, user_prompt)
@@ -218,11 +217,8 @@ You are NOT limited to writing about AI or technology - write about ANY topic th
     user_prompt = f"""Write an original blog post on a topic of YOUR choosing.
 
 IMPORTANT CONSTRAINTS:
-1. DO NOT write about these topics (your own recent posts from the last 3 weeks):
+1. DO NOT write about these topics (already covered in the last 3 weeks):
 {chr(10).join(['   - ' + t for t in recent_titles]) if recent_titles else '   (No recent posts - you have full freedom!)'}
-
-   Also AVOID similar topics to these (recently written by other AI tools):
-{chr(10).join(['   - ' + t for t in (other_tool_titles or [])]) if other_tool_titles else '   (No other posts to avoid)'}
 
 2. Choose a category from this list (these haven't been used in 7 days):
 {chr(10).join(['   - ' + c for c in available_categories])}
@@ -503,8 +499,21 @@ def parse_ai_response(response, tool_id):
     content = re.sub(r'```(?:html|HTML)?\s*\n?', '', content)
     content = re.sub(r'\n?```', '', content)
     
+    content = content.strip()
+
+    # Strip leading h1/h2 tag if it duplicates the title
+    if data.get('title'):
+        title_clean = data['title'].strip().lower()
+        content = re.sub(
+            r'^\s*<h[12][^>]*>\s*' + re.escape(title_clean) + r'\s*</h[12]>\s*',
+            '',
+            content,
+            count=1,
+            flags=re.IGNORECASE
+        )
+
     data['content'] = content.strip()
-    
+
     if data.get('title') and data.get('content') and data.get('category'):
         return data
     return None
@@ -545,13 +554,9 @@ def generate_post_for_tool(tool_slug, app=None):
     
     _log_debug(f"Tool config - Provider: {provider}, Model: {model}", "DEBUG")
     
-    # Get this tool's recent posts to avoid self-repetition
+    # Get posts from the last 3 weeks to avoid repetition
     recent_posts = db.get_recent_posts_by_tool(tool['id'], days=21)
     recent_titles = [p['title'] for p in recent_posts]
-
-    # Get ALL tools' recent titles to avoid cross-tool topic overlap
-    all_recent = db.get_recent_titles_all_tools(days=21)
-    other_tool_titles = [p['title'] for p in all_recent if p['tool_name'] != tool['name']]
     
     # Get categories used in the last 7 days to ensure variety
     recent_categories = db.get_recent_categories_by_tool(tool['id'], days=7)
@@ -561,50 +566,57 @@ def generate_post_for_tool(tool_slug, app=None):
     if not available_categories:
         available_categories = BLOG_CATEGORIES
     
-    # Build prompts
-    system_prompt, user_prompt = build_prompt(
-        tool['name'], style, recent_titles, available_categories, other_tool_titles
-    )
-    
-    try:
-        # Generate content using the appropriate provider
-        if provider == 'jasper':
-            result = generate_with_jasper(system_prompt, user_prompt)
-        elif provider in PROVIDER_GENERATORS:
-            generator = PROVIDER_GENERATORS[provider]
-            result = generator(model, system_prompt, user_prompt)
-        else:
-            _log_debug(f"Unknown provider: {provider}", "ERROR")
-            _log_debug(f"Available providers: {list(PROVIDER_GENERATORS.keys())} + jasper", "DEBUG")
-            raise Exception(f"Unknown provider: {provider}")
-        
-        # Extract content and token usage from result
-        response_content = result['content']
-        input_tokens = result.get('input_tokens', 0)
-        output_tokens = result.get('output_tokens', 0)
-        
-        # Log successful API usage
-        db.log_api_usage(
-            tool_id=tool['id'],
-            provider=provider,
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            success=True
+    MAX_RETRIES = 2
+
+    for attempt in range(MAX_RETRIES + 1):
+        # Build prompts (rebuilt each attempt so rejected titles are included)
+        system_prompt, user_prompt = build_prompt(
+            tool['name'], style, recent_titles, available_categories
         )
-        
-        # Parse the response
-        data = parse_ai_response(response_content, tool['id'])
-        
-        if data:
-            # Deduplicate title if it already exists
+
+        try:
+            # Generate content using the appropriate provider
+            if provider == 'jasper':
+                result = generate_with_jasper(system_prompt, user_prompt)
+            elif provider in PROVIDER_GENERATORS:
+                generator = PROVIDER_GENERATORS[provider]
+                result = generator(model, system_prompt, user_prompt)
+            else:
+                _log_debug(f"Unknown provider: {provider}", "ERROR")
+                raise Exception(f"Unknown provider: {provider}")
+
+            # Extract content and token usage from result
+            response_content = result['content']
+            input_tokens = result.get('input_tokens', 0)
+            output_tokens = result.get('output_tokens', 0)
+
+            # Log successful API usage
+            db.log_api_usage(
+                tool_id=tool['id'],
+                provider=provider,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                success=True
+            )
+
+            # Parse the response
+            data = parse_ai_response(response_content, tool['id'])
+
+            if not data:
+                _log_debug(f"Failed to parse AI response for {tool['name']}", "ERROR")
+                _log_debug(f"Response preview (first 500 chars): {response_content[:500]}", "DEBUG")
+                return None
+
+            # Check for duplicate title — retry with the title added to avoid list
             if db.post_title_exists(data['title']):
-                original = data['title']
-                suffix = 2
-                while db.post_title_exists(f"{original} ({suffix})"):
-                    suffix += 1
-                data['title'] = f"{original} ({suffix})"
-                print(f"⚠️  Duplicate title by {tool['name']}: \"{original}\" → renamed to \"{data['title']}\"")
+                if attempt < MAX_RETRIES:
+                    print(f"⚠️  Duplicate title by {tool['name']}: \"{data['title']}\" — retrying ({attempt + 1}/{MAX_RETRIES})")
+                    recent_titles.append(data['title'])
+                    continue
+                else:
+                    print(f"⚠️  Duplicate title by {tool['name']}: \"{data['title']}\" — max retries reached, skipping")
+                    return None
 
             post_id = db.insert_post(
                 data['title'],
@@ -612,36 +624,32 @@ def generate_post_for_tool(tool_slug, app=None):
                 data['category'],
                 data['tool_id']
             )
-            
+
             # Calculate and display cost
             cost = db.calculate_api_cost(provider, model, input_tokens, output_tokens)
             print(f"✅ Generated post by {tool['name']} ({provider}): {data['title']} [{data['category']}]")
             print(f"   💰 Tokens: {input_tokens} in / {output_tokens} out | Est. cost: ${cost:.4f}")
-            
+
             # Send email notifications to subscribers
             if app and post_id:
                 data['id'] = post_id
                 _send_post_notifications(app, data, tool)
-            
+
             return data
-        else:
-            _log_debug(f"Failed to parse AI response for {tool['name']}", "ERROR")
-            _log_debug(f"Response preview (first 500 chars): {response_content[:500]}", "DEBUG")
+
+        except Exception as e:
+            # Log failed API usage
+            db.log_api_usage(
+                tool_id=tool['id'],
+                provider=provider,
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                success=False,
+                error_message=str(e)
+            )
+            _log_debug(f"Error generating post with {tool['name']} ({provider}): {e}", "ERROR")
             return None
-            
-    except Exception as e:
-        # Log failed API usage
-        db.log_api_usage(
-            tool_id=tool['id'],
-            provider=provider,
-            model=model,
-            input_tokens=0,
-            output_tokens=0,
-            success=False,
-            error_message=str(e)
-        )
-        _log_debug(f"Error generating post with {tool['name']} ({provider}): {e}", "ERROR")
-        return None
 
 
 def _send_post_notifications(app, post_data, tool):
