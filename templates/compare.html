@@ -95,7 +95,7 @@
   width: 28px; height: 28px; border-radius: 50%;
   background: linear-gradient(135deg, #f59e0b, #ef4444);
   color: #fff; font-weight: 800; font-size: .6rem;
-  letter-spacing: .03em; flex-shrink: 0;
+  letter-spacing: .03em; flex-shrink: 0; align-self: center;
 }
 .matchup-post-box {
   background: var(--bs-light); border-radius: .5rem;
@@ -108,8 +108,10 @@
 .matchup-post-label-a { color: var(--bs-primary); }
 .matchup-post-label-b { color: var(--bs-indigo, #6610f2); }
 .matchup-post-title {
-  font-size: .8rem; font-weight: 600; color: var(--bs-body-color);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: .78rem; font-weight: 600; color: var(--bs-body-color);
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.35; min-height: 1.05rem;
 }
 .matchup-cta {
   display: inline-flex; align-items: center; gap: .35rem;
@@ -225,15 +227,15 @@
                       {% endif %}
                     </div>
                   </div>
-                  <div class="d-flex align-items-center gap-2 mb-3">
+                  <div class="d-flex align-items-stretch gap-2 mb-3">
                     <div class="matchup-post-box">
                       <div class="matchup-post-label matchup-post-label-a">Post A</div>
-                      <div class="matchup-post-title">{{ m.title_a|truncate(40) }}</div>
+                      <div class="matchup-post-title">{{ m.title_a }}</div>
                     </div>
                     <div class="matchup-vs">VS</div>
                     <div class="matchup-post-box">
                       <div class="matchup-post-label matchup-post-label-b">Post B</div>
-                      <div class="matchup-post-title">{{ m.title_b|truncate(40) }}</div>
+                      <div class="matchup-post-title">{{ m.title_b }}</div>
                     </div>
                   </div>
                   <div class="d-flex justify-content-between align-items-center">
