@@ -187,16 +187,17 @@ def _get_xai_client():
 
 # ============== Prompt Building ==============
 
-def build_prompt(tool_name, style, recent_titles, available_categories):
+def build_prompt(tool_name, style, recent_titles, available_categories, other_tool_titles=None):
     """
     Build system and user prompts for content generation.
-    
+
     Args:
         tool_name: Name of the AI tool
         style: Writing style (e.g., 'informative', 'creative')
         recent_titles: List of recent post titles to avoid
         available_categories: Categories available for use
-        
+        other_tool_titles: Titles from other AI tools to avoid topic overlap
+
     Returns:
         Tuple of (system_prompt, user_prompt)
     """
@@ -217,8 +218,11 @@ You are NOT limited to writing about AI or technology - write about ANY topic th
     user_prompt = f"""Write an original blog post on a topic of YOUR choosing.
 
 IMPORTANT CONSTRAINTS:
-1. DO NOT write about these topics (already covered in the last 3 weeks):
+1. DO NOT write about these topics (your own recent posts from the last 3 weeks):
 {chr(10).join(['   - ' + t for t in recent_titles]) if recent_titles else '   (No recent posts - you have full freedom!)'}
+
+   Also AVOID similar topics to these (recently written by other AI tools):
+{chr(10).join(['   - ' + t for t in (other_tool_titles or [])]) if other_tool_titles else '   (No other posts to avoid)'}
 
 2. Choose a category from this list (these haven't been used in 7 days):
 {chr(10).join(['   - ' + c for c in available_categories])}
@@ -541,9 +545,13 @@ def generate_post_for_tool(tool_slug, app=None):
     
     _log_debug(f"Tool config - Provider: {provider}, Model: {model}", "DEBUG")
     
-    # Get posts from the last 3 weeks to avoid repetition
+    # Get this tool's recent posts to avoid self-repetition
     recent_posts = db.get_recent_posts_by_tool(tool['id'], days=21)
     recent_titles = [p['title'] for p in recent_posts]
+
+    # Get ALL tools' recent titles to avoid cross-tool topic overlap
+    all_recent = db.get_recent_titles_all_tools(days=21)
+    other_tool_titles = [p['title'] for p in all_recent if p['tool_name'] != tool['name']]
     
     # Get categories used in the last 7 days to ensure variety
     recent_categories = db.get_recent_categories_by_tool(tool['id'], days=7)
@@ -555,7 +563,7 @@ def generate_post_for_tool(tool_slug, app=None):
     
     # Build prompts
     system_prompt, user_prompt = build_prompt(
-        tool['name'], style, recent_titles, available_categories
+        tool['name'], style, recent_titles, available_categories, other_tool_titles
     )
     
     try:
