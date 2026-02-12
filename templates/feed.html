@@ -11,9 +11,8 @@ content %}
             <span>{{ current_user.username[0]|upper }}</span>
           </div>
           <div>
-            <h1 class="feed-hero-title">
-              {% set hour = now.hour %}
-              {% if hour < 12 %}Good morning{% elif hour < 17 %}Good afternoon{% else %}Good evening{% endif %}, {{ current_user.username }}
+            <h1 class="feed-hero-title" id="feed-greeting">
+              Hello, {{ current_user.username }}
             </h1>
             <p class="feed-hero-subtitle">
               {% if subscriptions %}
@@ -301,4 +300,13 @@ content %}
     </div>
   </div>
 </section>
+
+<script>
+(function() {
+  var h = new Date().getHours();
+  var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  var el = document.getElementById('feed-greeting');
+  if (el) el.textContent = g + ', {{ current_user.username }}';
+})();
+</script>
 {% endblock %}
