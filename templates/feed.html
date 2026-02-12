@@ -1,69 +1,135 @@
 {% extends "base.html" %} {% block title %}My Feed{% endblock %} {% block
 content %}
+
+<!-- Welcome Hero -->
+<section class="feed-hero">
+  <div class="container">
+    <div class="feed-hero-inner">
+      <div class="feed-hero-content">
+        <div class="feed-hero-greeting">
+          <div class="feed-hero-avatar">
+            <span>{{ current_user.username[0]|upper }}</span>
+          </div>
+          <div>
+            <h1 class="feed-hero-title">
+              {% set hour = now.hour %}
+              {% if hour < 12 %}Good morning{% elif hour < 17 %}Good afternoon{% else %}Good evening{% endif %}, {{ current_user.username }}
+            </h1>
+            <p class="feed-hero-subtitle">
+              {% if subscriptions %}
+                Your personalized AI feed &mdash; {{ total_posts }} post{{ 's' if total_posts != 1 else '' }} from {{ subscriptions|length }} tool{{ 's' if subscriptions|length > 1 else '' }}
+              {% else %}
+                Start following AI tools to build your personalized feed
+              {% endif %}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="feed-hero-actions d-none d-md-flex">
+        <a href="{{ url_for('subscriptions') }}" class="feed-hero-btn">
+          <i class="bi bi-plus-circle"></i> Follow Tools
+        </a>
+        <a href="{{ url_for('bookmarks') }}" class="feed-hero-btn feed-hero-btn-outline">
+          <i class="bi bi-bookmark"></i> Bookmarks
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="py-3 py-md-4">
   <div class="container">
     <div class="row">
-      <!-- Mobile Following Banner -->
+      <!-- Mobile Quick Bar -->
       <div class="col-12 d-lg-none mb-3">
-        <div class="card border-0 shadow-sm bg-primary text-white">
-          <div class="card-body py-2 d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center">
-              <i class="bi bi-bell-fill me-2"></i>
-              <span class="small">
-                {% if subscriptions %}
-                  Following {{ subscriptions|length }} tool{{ 's' if subscriptions|length > 1 else '' }}
-                {% else %}
-                  Not following any tools
-                {% endif %}
-              </span>
-            </div>
-            <a href="{{ url_for('subscriptions') }}" class="btn btn-light btn-sm">
-              <i class="bi bi-gear"></i>
-            </a>
-          </div>
+        <div class="feed-mobile-bar">
+          <a href="{{ url_for('subscriptions') }}" class="feed-mobile-chip">
+            <i class="bi bi-bell-fill"></i>
+            {% if subscriptions %}
+              {{ subscriptions|length }} Following
+            {% else %}
+              Follow Tools
+            {% endif %}
+          </a>
+          <a href="{{ url_for('bookmarks') }}" class="feed-mobile-chip">
+            <i class="bi bi-bookmark"></i> Saved
+          </a>
+          <a href="{{ url_for('compare_page') }}" class="feed-mobile-chip">
+            <i class="bi bi-columns-gap"></i> Compare
+          </a>
         </div>
       </div>
 
       <!-- Sidebar -->
       <div class="col-lg-3 mb-4 d-none d-lg-block">
         <div class="position-sticky" style="top: 1rem;">
-          <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-primary text-white">
+          <!-- Followed Tools Card -->
+          <div class="feed-sidebar-card mb-3">
+            <div class="feed-sidebar-header">
               <i class="bi bi-bell me-2"></i>Followed Tools
             </div>
-            <div class="card-body">
+            <div class="feed-sidebar-body">
               {% if subscriptions %}
-              <ul class="list-unstyled mb-0">
+              <ul class="feed-tool-list">
                 {% for sub in subscriptions %}
-                <li class="mb-2">
-                  <a
-                    href="{{ url_for('tool_page', slug=sub.slug) }}"
-                    class="text-decoration-none"
-                  >
-                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                <li>
+                  <a href="{{ url_for('tool_page', slug=sub.slug) }}" class="feed-tool-link">
+                    <span class="feed-tool-dot feed-tool-dot-{{ sub.slug }}"></span>
                     {{ sub.name }}
                   </a>
                 </li>
                 {% endfor %}
               </ul>
-              <hr />
-              <a
-                href="{{ url_for('subscriptions') }}"
-                class="btn btn-outline-primary btn-sm w-100"
-              >
-                <i class="bi bi-gear me-1"></i>Manage Followed Tools
+              <a href="{{ url_for('subscriptions') }}" class="feed-manage-btn">
+                <i class="bi bi-gear me-1"></i>Manage Tools
               </a>
               {% else %}
-              <p class="text-muted mb-3">
-                You haven't followed any AI tools yet.
-              </p>
-              <a
-                href="{{ url_for('subscriptions') }}"
-                class="btn btn-primary btn-sm w-100"
-              >
-                <i class="bi bi-plus-circle me-1"></i>Follow AI Tools
-              </a>
+              <div class="text-center py-3">
+                <i class="bi bi-plus-circle-dotted feed-empty-icon"></i>
+                <p class="text-muted small mb-3">Discover AI tools to follow</p>
+                <a href="{{ url_for('subscriptions') }}" class="btn btn-primary btn-sm w-100">
+                  <i class="bi bi-plus-circle me-1"></i>Browse Tools
+                </a>
+              </div>
               {% endif %}
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="feed-sidebar-card mb-3">
+            <div class="feed-sidebar-header">
+              <i class="bi bi-lightning me-2"></i>Quick Actions
+            </div>
+            <div class="feed-sidebar-body">
+              <a href="{{ url_for('home') }}" class="feed-action-link">
+                <i class="bi bi-house"></i> Browse All Posts
+              </a>
+              <a href="{{ url_for('compare_page') }}" class="feed-action-link">
+                <i class="bi bi-columns-gap"></i> Compare AI Tools
+              </a>
+              <a href="{{ url_for('bookmarks') }}" class="feed-action-link">
+                <i class="bi bi-bookmark"></i> My Bookmarks
+              </a>
+            </div>
+          </div>
+
+          <!-- Feed Stats -->
+          <div class="feed-sidebar-card">
+            <div class="feed-sidebar-header">
+              <i class="bi bi-graph-up me-2"></i>Feed Stats
+            </div>
+            <div class="feed-sidebar-body">
+              <div class="feed-stat-row">
+                <div class="feed-stat-item">
+                  <span class="feed-stat-number">{{ subscriptions|length }}</span>
+                  <span class="feed-stat-label">Following</span>
+                </div>
+                <div class="feed-stat-divider"></div>
+                <div class="feed-stat-item">
+                  <span class="feed-stat-number">{{ total_posts }}</span>
+                  <span class="feed-stat-label">Posts</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -72,69 +138,62 @@ content %}
       <!-- Main Feed -->
       <div class="col-lg-6">
         <div class="d-flex justify-content-between align-items-center mb-3 mb-md-4">
-          <h2 class="mb-0 h5 h4-md"><i class="bi bi-rss me-2"></i>My Feed</h2>
-          <span class="badge bg-primary rounded-pill">{{ total_posts }} posts</span>
+          <h2 class="mb-0 h5 h4-md feed-section-title"><i class="bi bi-rss me-2"></i>Latest Posts</h2>
+          <span class="feed-post-count">{{ total_posts }} posts</span>
         </div>
 
         {% if posts %}
         <div class="feed-stream">
           {% for post in posts %}
-          <article class="card border-0 shadow-sm mb-4 feed-post">
+          <article class="feed-card feed-animate" style="animation-delay: {{ loop.index0 * 0.06 }}s;">
+            <!-- Colored accent bar -->
+            <div class="feed-card-accent feed-card-accent-{{ post.tool_slug }}"></div>
+
             <!-- Post Header -->
-            <div class="card-header bg-transparent border-0 pt-3 pb-0">
+            <div class="feed-card-header">
               <div class="d-flex align-items-center">
-                {% if post.tool_slug == 'chatgpt' %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-chatgpt fs-4"></i>
+                <div class="feed-tool-avatar feed-tool-avatar-{{ post.tool_slug }}">
+                  {% if post.tool_slug == 'chatgpt' %}
+                    <i class="bi bi-robot"></i>
+                  {% elif post.tool_slug == 'claude' %}
+                    <i class="bi bi-robot"></i>
+                  {% elif post.tool_slug == 'gemini' %}
+                    <i class="bi bi-robot"></i>
+                  {% elif post.tool_slug == 'grok' %}
+                    <i class="bi bi-robot"></i>
+                  {% elif post.tool_slug == 'llama' %}
+                    <i class="bi bi-robot"></i>
+                  {% elif post.tool_slug == 'jasper' %}
+                    <i class="bi bi-robot"></i>
+                  {% else %}
+                    <i class="bi bi-robot"></i>
+                  {% endif %}
                 </div>
-                {% elif post.tool_slug == 'claude' %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-claude fs-4"></i>
-                </div>
-                {% elif post.tool_slug == 'gemini' %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-gemini fs-4"></i>
-                </div>
-                {% elif post.tool_slug == 'grok' %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-grok fs-4"></i>
-                </div>
-                {% elif post.tool_slug == 'llama' %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-llama fs-4"></i>
-                </div>
-                {% elif post.tool_slug == 'jasper' %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-jasper fs-4"></i>
-                </div>
-                {% else %}
-                <div class="feed-avatar bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
-                  <i class="bi bi-robot text-primary fs-4"></i>
-                </div>
-                {% endif %}
-                <div class="flex-grow-1">
-                  <a href="{{ url_for('tool_page', slug=post.tool_slug) }}" class="fw-semibold text-decoration-none text-dark">
+                <div class="flex-grow-1 ms-3">
+                  <a href="{{ url_for('tool_page', slug=post.tool_slug) }}" class="feed-tool-name">
                     {{ post.tool_name }}
                   </a>
-                  <div class="text-muted small">
+                  <div class="feed-post-meta">
                     {% if post.created_at %}
-                    {{ post.created_at.strftime('%B %d, %Y') }} · {{ post.content|reading_time }}
+                    <span><i class="bi bi-calendar3 me-1"></i>{{ post.created_at.strftime('%b %d, %Y') }}</span>
+                    <span class="feed-meta-dot"></span>
+                    <span><i class="bi bi-clock me-1"></i>{{ post.content|reading_time }}</span>
                     {% endif %}
                   </div>
                 </div>
-                <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ post.category }}</span>
+                <span class="feed-category-pill">{{ post.category }}</span>
               </div>
             </div>
-            
+
             <!-- Post Content -->
-            <div class="card-body">
-              <h5 class="card-title mb-3">
-                <a href="{{ url_for('post', post_id=post.id) }}" class="text-decoration-none text-dark stretched-link-title">
+            <div class="feed-card-body">
+              <h5 class="feed-post-title">
+                <a href="{{ url_for('post', post_id=post.id) }}">
                   {{ post.title }}
                 </a>
                 {% set days_old = (now - post.created_at).days if post.created_at else 999 %}
                 {% if days_old < FREE_POST_DELAY_DAYS %}
-                <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">
+                <span class="feed-badge-new">
                   {% if is_premium %}
                   <i class="bi bi-gem me-1"></i>NEW
                   {% else %}
@@ -143,49 +202,48 @@ content %}
                 </span>
                 {% endif %}
               </h5>
-              <p class="card-text text-muted mb-0" style="line-height: 1.7;">
+              <p class="feed-post-excerpt">
                 {{ post.content|striptags|truncate(300) }}
               </p>
             </div>
-            
+
             <!-- Post Footer -->
-            <div class="card-footer bg-transparent border-top">
-              <div class="d-flex justify-content-between align-items-center">
-                <div class="d-flex gap-3">
-                  <a href="{{ url_for('post', post_id=post.id) }}#comments" class="text-muted text-decoration-none small">
-                    <i class="bi bi-chat-dots me-1"></i>Comments
-                  </a>
-                  <button class="btn btn-link text-muted p-0 text-decoration-none small bookmark-btn" data-post-id="{{ post.id }}">
-                    <i class="bi bi-bookmark me-1"></i>Save
-                  </button>
-                  <button class="btn btn-link text-muted p-0 text-decoration-none small" onclick="if(navigator.share) navigator.share({title: '{{ post.title }}', url: '{{ url_for('post', post_id=post.id, _external=True) }}'})">
-                    <i class="bi bi-share me-1"></i>Share
-                  </button>
-                </div>
-                <a href="{{ url_for('post', post_id=post.id) }}" class="btn btn-sm btn-primary">
-                  Read Full Post <i class="bi bi-arrow-right ms-1"></i>
+            <div class="feed-card-footer">
+              <div class="feed-actions-left">
+                <a href="{{ url_for('post', post_id=post.id) }}#comments" class="feed-action-btn">
+                  <i class="bi bi-chat-dots"></i><span>Comments</span>
                 </a>
+                <button class="feed-action-btn bookmark-btn" data-post-id="{{ post.id }}">
+                  <i class="bi bi-bookmark"></i><span>Save</span>
+                </button>
+                <button class="feed-action-btn" onclick="if(navigator.share) navigator.share({title: '{{ post.title }}', url: '{{ url_for('post', post_id=post.id, _external=True) }}'})">
+                  <i class="bi bi-share"></i><span>Share</span>
+                </button>
               </div>
+              <a href="{{ url_for('post', post_id=post.id) }}" class="feed-read-btn">
+                Read Post <i class="bi bi-arrow-right ms-1"></i>
+              </a>
             </div>
           </article>
           {% endfor %}
         </div>
-        
+
         <!-- Pagination -->
         {% include 'components/pagination.html' %}
         {% else %}
-        <div class="card border-0 shadow-sm">
-          <div class="card-body text-center py-5">
-            <i class="bi bi-inbox display-1 text-muted"></i>
-            <h4 class="mt-3">Your feed is empty</h4>
-            <p class="text-muted mb-4">
-              Follow AI tools to see their posts in your personalized
-              feed.
-            </p>
-            <a href="{{ url_for('subscriptions') }}" class="btn btn-primary">
-              <i class="bi bi-plus-circle me-2"></i>Browse AI Tools
-            </a>
+        <!-- Empty State -->
+        <div class="feed-empty-state">
+          <div class="feed-empty-graphic">
+            <div class="feed-empty-circle feed-empty-circle-1"></div>
+            <div class="feed-empty-circle feed-empty-circle-2"></div>
+            <div class="feed-empty-circle feed-empty-circle-3"></div>
+            <i class="bi bi-rss feed-empty-main-icon"></i>
           </div>
+          <h3>Your feed is waiting</h3>
+          <p>Follow AI tools you're interested in and their latest posts will appear right here.</p>
+          <a href="{{ url_for('subscriptions') }}" class="btn btn-primary btn-lg">
+            <i class="bi bi-plus-circle me-2"></i>Discover AI Tools
+          </a>
         </div>
         {% endif %}
       </div>
@@ -193,37 +251,50 @@ content %}
       <!-- Right Sidebar (visible on large screens) -->
       <div class="col-lg-3 d-none d-lg-block">
         <div class="position-sticky" style="top: 1rem;">
-          <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-transparent border-bottom">
-              <strong><i class="bi bi-lightning me-2"></i>Quick Actions</strong>
+          <!-- Trending / Suggested -->
+          <div class="feed-sidebar-card mb-3">
+            <div class="feed-sidebar-header">
+              <i class="bi bi-fire me-2"></i>Explore
             </div>
-            <div class="card-body">
-              <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm w-100 mb-2">
-                <i class="bi bi-house me-1"></i>Browse All Posts
+            <div class="feed-sidebar-body">
+              <a href="{{ url_for('home') }}" class="feed-explore-link">
+                <div class="feed-explore-icon bg-primary bg-opacity-10 text-primary">
+                  <i class="bi bi-newspaper"></i>
+                </div>
+                <div>
+                  <span class="feed-explore-title">Latest Posts</span>
+                  <span class="feed-explore-desc">See all recent articles</span>
+                </div>
               </a>
-              <a href="{{ url_for('compare_page') }}" class="btn btn-outline-secondary btn-sm w-100 mb-2">
-                <i class="bi bi-columns-gap me-1"></i>Compare AI Tools
+              <a href="{{ url_for('compare_page') }}" class="feed-explore-link">
+                <div class="feed-explore-icon bg-warning bg-opacity-10 text-warning">
+                  <i class="bi bi-columns-gap"></i>
+                </div>
+                <div>
+                  <span class="feed-explore-title">Compare Tools</span>
+                  <span class="feed-explore-desc">Side-by-side analysis</span>
+                </div>
               </a>
-              <a href="{{ url_for('bookmarks') }}" class="btn btn-outline-secondary btn-sm w-100">
-                <i class="bi bi-bookmark me-1"></i>My Bookmarks
+              <a href="{{ url_for('bookmarks') }}" class="feed-explore-link">
+                <div class="feed-explore-icon bg-danger bg-opacity-10 text-danger">
+                  <i class="bi bi-bookmark-heart"></i>
+                </div>
+                <div>
+                  <span class="feed-explore-title">Saved Posts</span>
+                  <span class="feed-explore-desc">Your bookmarked reads</span>
+                </div>
               </a>
             </div>
           </div>
-          
-          <div class="card border-0 shadow-sm">
-            <div class="card-header bg-transparent border-bottom">
-              <strong><i class="bi bi-graph-up me-2"></i>Feed Stats</strong>
+
+          <!-- Pro Tip Card -->
+          <div class="feed-tip-card">
+            <div class="feed-tip-icon">
+              <i class="bi bi-lightbulb"></i>
             </div>
-            <div class="card-body">
-              <div class="d-flex justify-content-between mb-2">
-                <span class="text-muted">Following</span>
-                <span class="fw-semibold">{{ subscriptions|length }}</span>
-              </div>
-              <div class="d-flex justify-content-between">
-                <span class="text-muted">Total Posts</span>
-                <span class="fw-semibold">{{ total_posts }}</span>
-              </div>
-            </div>
+            <h6 class="feed-tip-title">Pro Tip</h6>
+            <p class="feed-tip-text">Follow multiple AI tools to get a diverse feed and never miss important updates.</p>
+            <a href="{{ url_for('subscriptions') }}" class="feed-tip-link">Manage subscriptions <i class="bi bi-arrow-right"></i></a>
           </div>
         </div>
       </div>
