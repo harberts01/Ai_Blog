@@ -1,18 +1,11 @@
 {# Reusable voting panel — included by comparison.html for both premium and bootstrap-free users #}
 <div class="voting-panel {% if not has_voted %}gated{% endif %}" id="voting-panel">
   <div class="gate-message" id="gate-message">
-    <div class="gate-timer-ring" id="gate-timer-ring">
-      <svg viewBox="0 0 36 36" class="gate-timer-svg">
-        <path class="gate-timer-bg"
-          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-          fill="none" stroke-width="3" />
-        <path class="gate-timer-fill" id="gate-timer-fill"
-          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-          fill="none" stroke-width="3" stroke-dasharray="0, 100" />
-      </svg>
-      <span class="gate-timer-text" id="gate-timer-text">30</span>
+    <div class="gate-scroll-hint">
+      <i class="bi bi-book fs-3 text-primary"></i>
     </div>
     <div class="gate-label">Read both posts to unlock voting</div>
+    <div class="gate-sublabel">Scroll through 60% of either post</div>
   </div>
 
   {% if has_voted and not votes_locked %}
