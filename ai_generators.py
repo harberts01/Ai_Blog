@@ -589,10 +589,19 @@ def generate_post_for_tool(tool_slug, app=None):
         data = parse_ai_response(response_content, tool['id'])
         
         if data:
+            # Deduplicate title if it already exists
+            if db.post_title_exists(data['title']):
+                original = data['title']
+                suffix = 2
+                while db.post_title_exists(f"{original} ({suffix})"):
+                    suffix += 1
+                data['title'] = f"{original} ({suffix})"
+                print(f"⚠️  Duplicate title by {tool['name']}: \"{original}\" → renamed to \"{data['title']}\"")
+
             post_id = db.insert_post(
-                data['title'], 
-                data['content'], 
-                data['category'], 
+                data['title'],
+                data['content'],
+                data['category'],
                 data['tool_id']
             )
             

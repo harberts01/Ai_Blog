@@ -418,6 +418,25 @@ def insert_post(title, content, category, tool_id=None):
         connection.close()
 
 
+def post_title_exists(title):
+    """Check if a post with this exact title (case-insensitive) already exists"""
+    connection = get_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM Post WHERE LOWER(Title) = LOWER(%s) LIMIT 1",
+                (title,)
+            )
+            return cursor.fetchone() is not None
+    except Exception as e:
+        print(f"Error checking duplicate title: {e}")
+        return False
+    finally:
+        connection.close()
+
+
 def get_last_post_date_for_tool(tool_id):
     """Get the date of the most recent post for a specific tool"""
     connection = get_connection()
