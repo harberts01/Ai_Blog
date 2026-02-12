@@ -2242,6 +2242,193 @@ html:not([data-theme="dark"]) #navbarNav .theme-label:first-child {
   border-color: var(--border-color) !important;
 }
 
+/* Dark mode - My Feed */
+[data-theme="dark"] .feed-hero {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #581c87 100%);
+}
+
+[data-theme="dark"] .feed-card {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .feed-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+[data-theme="dark"] .feed-card-footer {
+  background: var(--bg-tertiary);
+  border-top-color: var(--border-color);
+}
+
+[data-theme="dark"] .feed-section-title {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .feed-tool-name {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .feed-post-meta {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-meta-dot {
+  background: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-category-pill {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-post-title a {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .feed-post-title a:hover {
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-post-excerpt {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .feed-action-btn {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-action-btn:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-sidebar-card {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .feed-sidebar-header {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .feed-tool-link {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .feed-tool-link:hover {
+  background: rgba(99, 102, 241, 0.1);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-tool-dot-grok {
+  background: #9ca3af;
+}
+
+[data-theme="dark"] .feed-manage-btn {
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+[data-theme="dark"] .feed-manage-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: #a5b4fc;
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-action-link {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .feed-action-link:hover {
+  background: rgba(99, 102, 241, 0.1);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-action-link i {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-action-link:hover i {
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-stat-label {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-stat-divider {
+  background: var(--border-color);
+}
+
+[data-theme="dark"] .feed-explore-link:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+[data-theme="dark"] .feed-explore-title {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .feed-explore-desc {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-tip-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(253, 230, 138, 0.1));
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+[data-theme="dark"] .feed-tip-title {
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .feed-tip-text {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .feed-tip-link {
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .feed-tip-link:hover {
+  color: #fcd34d;
+}
+
+[data-theme="dark"] .feed-empty-state h3 {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .feed-empty-state p {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .feed-empty-icon {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .feed-mobile-chip {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .feed-mobile-chip:hover {
+  background: rgba(99, 102, 241, 0.3);
+  color: #c7d2fe;
+}
+
+[data-theme="dark"] .feed-card-accent-grok {
+  background: linear-gradient(90deg, #6b7280, #9ca3af);
+}
+
+[data-theme="dark"] .feed-tool-avatar-grok {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
+}
+
 /* Dark mode toggle button */
 .theme-toggle {
   background: none;
