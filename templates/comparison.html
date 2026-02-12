@@ -16,7 +16,7 @@
 {% block extra_css %}
 <style>
 /* ===== Layout ===== */
-.compare-columns { display: flex; gap: 1.5rem; min-height: 400px; }
+.compare-columns { display: flex; gap: 1.5rem; min-height: 400px; position: relative; }
 .compare-col { flex: 1; min-width: 0; }
 .post-scroll-area {
   max-height: 70vh; overflow-y: auto; padding: 1.25rem;
@@ -46,36 +46,186 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ===== Compare Hero Header ===== */
+.compare-hero {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+  border-radius: 1rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+.compare-hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 70% 20%, rgba(139,92,246,.3) 0%, transparent 50%),
+              radial-gradient(circle at 20% 80%, rgba(59,130,246,.2) 0%, transparent 50%);
+  pointer-events: none;
+}
+.compare-hero-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(255,255,255,.12); backdrop-filter: blur(4px);
+  font-size: 1.2rem; margin-bottom: .5rem;
+  color: #fbbf24;
+}
+.compare-hero-title {
+  font-size: 1.5rem; font-weight: 700; margin: 0;
+  letter-spacing: -.01em;
+}
+.compare-hero-sub {
+  font-size: .85rem; margin: .25rem 0 0;
+  color: rgba(255,255,255,.65);
+}
+.compare-hero-nav {
+  position: absolute; top: .75rem; left: 1rem; right: 1rem;
+  display: flex; align-items: center; justify-content: space-between;
+  z-index: 2;
+}
+
 /* ===== Metrics Bar ===== */
 .metrics-bar { font-size: .8rem; padding: .4rem 1rem; background: var(--bs-light); border-bottom: 1px solid var(--bs-border-color); }
+
+/* ===== Step Progress Bar ===== */
+.step-progress {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; padding: .5rem 0;
+}
+.step-item {
+  display: flex; flex-direction: column; align-items: center; gap: .25rem;
+}
+.step-circle {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2px solid var(--bs-border-color);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: .8rem;
+  color: var(--bs-secondary); background: var(--bs-body-bg);
+  transition: all .3s;
+}
+.step-label { font-size: .7rem; color: var(--bs-secondary); font-weight: 500; transition: color .3s; }
+.step-line {
+  width: 60px; height: 2px;
+  background: var(--bs-border-color);
+  margin: 0 .5rem; margin-bottom: 1.2rem;
+  transition: background .3s;
+}
+.step-item.active .step-circle { border-color: var(--bs-primary); background: var(--bs-primary); color: #fff; }
+.step-item.active .step-label { color: var(--bs-primary); }
+.step-item.completed .step-circle { border-color: #10b981; background: #10b981; color: #fff; }
+.step-item.completed .step-label { color: #10b981; }
+.step-line.filled { background: #10b981; }
+
+/* ===== VS Badge ===== */
+.vs-badge {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff; font-weight: 800; font-size: .85rem;
+  letter-spacing: .05em; flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(245,158,11,.4);
+  align-self: center; margin: 0 -.75rem; z-index: 5; position: relative;
+}
+
+/* ===== Vote Count Badge ===== */
+.vote-count-display {
+  background: rgba(255,255,255,.15); backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #fff; padding: .35rem .85rem; border-radius: 2rem;
+  font-size: .8rem; font-weight: 600;
+  display: inline-flex; align-items: center;
+  animation: badgeEntrance .6s ease-out;
+}
+@keyframes badgeEntrance {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes badgeBump {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* ===== Floating Vote Nudge ===== */
+.vote-nudge {
+  position: fixed; bottom: 80px; right: 24px; z-index: 200;
+  background: linear-gradient(135deg, var(--bs-primary), var(--bs-indigo, #6610f2));
+  color: #fff; padding: .6rem 1.25rem; border-radius: 2rem;
+  font-weight: 600; font-size: .85rem; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(79,70,229,.35);
+  animation: nudgePulse 2s ease-in-out infinite;
+  transition: opacity .3s, transform .3s;
+  display: flex; align-items: center;
+}
+.vote-nudge.hidden { opacity: 0; pointer-events: none; transform: translateY(10px); }
+@keyframes nudgePulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 4px 16px rgba(79,70,229,.35); }
+  50% { transform: scale(1.05); box-shadow: 0 6px 24px rgba(79,70,229,.5); }
+}
 
 /* ===== Voting Panel ===== */
 .voting-panel { transition: opacity .3s; }
 .voting-panel.gated { opacity: .35; pointer-events: none; }
 .vote-categories { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; }
 .vote-card {
-  flex: 1 1 170px; max-width: 220px; border: 1px solid var(--bs-border-color);
-  border-radius: .5rem; padding: .75rem; text-align: center; background: var(--bs-body-bg);
+  flex: 1 1 170px; max-width: 220px; border: 2px solid var(--bs-border-color);
+  border-radius: .75rem; padding: 1rem; text-align: center; background: var(--bs-body-bg);
   display: flex; flex-direction: column; align-items: center;
+  transition: transform .2s, box-shadow .2s, border-color .2s;
+}
+.vote-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,.08);
 }
 .vote-card h6 { font-size: .85rem; margin-bottom: .25rem; }
 .vote-card .vote-desc { font-size: .72rem; color: var(--bs-secondary); margin-bottom: .5rem; flex: 1; }
 .vote-card > .d-flex { flex-wrap: nowrap; width: 100%; }
 .vote-btn {
-  border: 2px solid var(--bs-border-color); border-radius: .375rem;
-  padding: .35rem .75rem; font-size: .8rem; cursor: pointer;
-  background: transparent; transition: all .15s; flex: 1 1 0; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border: 2px solid var(--bs-border-color); border-radius: .5rem;
+  padding: .45rem .75rem; font-size: .8rem; cursor: pointer;
+  background: transparent; transition: all .2s ease; flex: 1 1 0; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;
 }
-.vote-btn:hover { border-color: var(--bs-primary); }
-.vote-btn.selected-left { background: var(--bs-primary); color: #fff; border-color: var(--bs-primary); }
-.vote-btn.selected-right { background: var(--bs-indigo, #6610f2); color: #fff; border-color: var(--bs-indigo, #6610f2); }
+.vote-btn:hover {
+  border-color: var(--bs-primary);
+  background: rgba(79,70,229,.06);
+  transform: scale(1.03);
+}
+.vote-btn.selected-left {
+  background: var(--bs-primary); color: #fff; border-color: var(--bs-primary);
+  box-shadow: 0 3px 10px rgba(79,70,229,.3); transform: scale(1.05);
+}
+.vote-btn.selected-right {
+  background: var(--bs-indigo, #6610f2); color: #fff; border-color: var(--bs-indigo, #6610f2);
+  box-shadow: 0 3px 10px rgba(102,16,242,.3); transform: scale(1.05);
+}
 
 /* ===== Submit Bar ===== */
 .submit-bar {
-  position: sticky; bottom: 0; z-index: 100; padding: .75rem;
-  background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
-  box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+  position: sticky; bottom: 0; z-index: 100; padding: 1rem;
+  background: var(--bs-body-bg);
+}
+.submit-btn-main {
+  background: linear-gradient(135deg, var(--bs-primary), var(--bs-indigo, #6610f2));
+  color: #fff; border: none; padding: .65rem 2rem; border-radius: 2rem;
+  font-size: .95rem; font-weight: 600; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(79,70,229,.3);
+  transition: transform .15s, box-shadow .15s, opacity .15s;
+  display: inline-flex; align-items: center; gap: .5rem;
+}
+.submit-btn-main:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(79,70,229,.4);
+}
+.submit-btn-main:disabled {
+  opacity: .5; cursor: not-allowed;
+  box-shadow: none;
+}
+.submit-btn-main.update-mode {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  box-shadow: 0 4px 14px rgba(245,158,11,.3);
+}
+.submit-btn-main.update-mode:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(245,158,11,.4);
 }
 
 /* ===== Results ===== */
@@ -84,6 +234,23 @@
 .result-bar-b { background: var(--bs-indigo, #6610f2); transition: width .6s ease; }
 .result-winner { font-weight: 600; }
 .trophy-icon { color: #f0ad4e; }
+
+/* ===== Gate Timer ===== */
+.gate-message {
+  text-align: center; padding: 1.5rem;
+  display: flex; flex-direction: column; align-items: center; gap: .5rem;
+}
+.gate-timer-ring { position: relative; width: 64px; height: 64px; }
+.gate-timer-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.gate-timer-bg { stroke: var(--bs-border-color); }
+.gate-timer-fill { stroke: var(--bs-primary); transition: stroke-dasharray .3s linear; }
+.gate-timer-text {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 1.1rem; color: var(--bs-primary);
+}
+.gate-label { font-weight: 600; font-size: .9rem; color: var(--bs-body-color); }
+.gate-sublabel { font-size: .75rem; color: var(--bs-secondary); }
 
 /* ===== Mobile ===== */
 .mobile-tabs { display: none; }
@@ -98,13 +265,14 @@
   }
   .mobile-tab.active { border-color: var(--bs-primary); background: var(--bs-primary); color: #fff; }
   .vote-card { max-width: 100%; flex: 1 1 100%; }
+  .vs-badge { display: none; }
+  .vote-nudge { bottom: 70px; right: 16px; font-size: .8rem; padding: .5rem 1rem; }
+  .step-line { width: 40px; }
+  .step-circle { width: 28px; height: 28px; font-size: .75rem; }
 }
 
 /* ===== Countdown ===== */
 .countdown-badge { font-size: .8rem; }
-
-/* ===== Gate Message ===== */
-.gate-message { text-align: center; padding: 1rem; color: var(--bs-secondary); font-style: italic; }
 
 /* ===== Free User Disabled State ===== */
 .voting-panel-disabled { position: relative; opacity: 0.5; pointer-events: none; }
@@ -114,26 +282,47 @@
 {% endblock %}
 
 {% block content %}
+<canvas id="confetti-canvas" style="position:fixed;inset:0;z-index:9999;pointer-events:none;"></canvas>
 <section class="py-3 py-md-4">
   <div class="container">
     <!-- Header -->
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <div>
-        <a href="{{ url_for('compare_page') }}" class="btn btn-sm btn-outline-secondary me-2">
+    <div class="compare-hero mb-3">
+      <div class="compare-hero-nav">
+        <a href="{{ url_for('compare_page') }}" class="btn btn-sm btn-outline-light border-0">
           <i class="bi bi-arrow-left"></i> Back
         </a>
+        <div class="vote-count-display" id="vote-count-display">
+          <i class="bi bi-people-fill me-1"></i>
+          <span id="total-votes-badge">Join {{ total_vote_count }} voter{{ 's' if total_vote_count != 1 }}!</span>
+        </div>
       </div>
       <div class="text-center">
-        <h1 class="h4 mb-0">
+        <div class="compare-hero-icon"><i class="bi bi-trophy"></i></div>
+        <h1 class="compare-hero-title">
           <span class="blind-label">{{ left_post.category or right_post.category or 'Blind Comparison' }}</span>
           <span class="tool-name-reveal" id="header-tool-names"></span>
         </h1>
-        {% if matchup.prompt_id %}
-        <small class="text-muted d-block">Same prompt comparison</small>
-        {% endif %}
+        <p class="compare-hero-sub">
+          {% if matchup.prompt_id %}Same prompt comparison{% else %}Which AI writes better? You decide.{% endif %}
+        </p>
       </div>
-      <div>
-        <span class="badge bg-secondary" id="total-votes-badge">{{ total_vote_count }} vote{{ 's' if total_vote_count != 1 }}</span>
+    </div>
+
+    <!-- Step Progress Bar -->
+    <div class="step-progress mb-3" id="step-progress">
+      <div class="step-item active" id="step-read">
+        <div class="step-circle">1</div>
+        <span class="step-label">Read</span>
+      </div>
+      <div class="step-line" id="step-line-1"></div>
+      <div class="step-item" id="step-vote">
+        <div class="step-circle">2</div>
+        <span class="step-label">Vote</span>
+      </div>
+      <div class="step-line" id="step-line-2"></div>
+      <div class="step-item" id="step-results">
+        <div class="step-circle">3</div>
+        <span class="step-label">Results</span>
       </div>
     </div>
 
@@ -161,6 +350,9 @@
           <div class="post-content">{{ left_post.content|safe }}</div>
         </div>
       </div>
+
+      <!-- VS Badge -->
+      <div class="vs-badge" aria-hidden="true"><span>VS</span></div>
 
       <!-- Right Column -->
       <div class="compare-col" id="col-right" data-side="{{ right_post.side }}">
@@ -319,6 +511,13 @@
     {% endif %}
   </div>
 </section>
+
+<!-- Floating Vote Nudge -->
+<div class="vote-nudge hidden" id="vote-nudge" onclick="document.getElementById('voting-section').scrollIntoView({behavior:'smooth'})">
+  <i class="bi bi-hand-index-thumb me-1"></i>
+  <span>Cast Your Vote</span>
+  <i class="bi bi-chevron-down ms-1"></i>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -355,6 +554,79 @@
   const selections = {};
   let voteGateOpen = HAS_VOTED;
   let pageLoadTime = Date.now();
+  let gateTimerInterval = null;
+
+  // ===== Step Progress =====
+  function updateStepProgress(step) {
+    const readEl = document.getElementById('step-read');
+    const voteEl = document.getElementById('step-vote');
+    const resultsEl = document.getElementById('step-results');
+    const line1 = document.getElementById('step-line-1');
+    const line2 = document.getElementById('step-line-2');
+    if (step >= 2) {
+      readEl.classList.remove('active');
+      readEl.classList.add('completed');
+      readEl.querySelector('.step-circle').innerHTML = '<i class="bi bi-check"></i>';
+      voteEl.classList.add('active');
+      line1.classList.add('filled');
+    }
+    if (step >= 3) {
+      voteEl.classList.remove('active');
+      voteEl.classList.add('completed');
+      voteEl.querySelector('.step-circle').innerHTML = '<i class="bi bi-check"></i>';
+      resultsEl.classList.remove('active');
+      resultsEl.classList.add('completed');
+      resultsEl.querySelector('.step-circle').innerHTML = '<i class="bi bi-check"></i>';
+      line2.classList.add('filled');
+    }
+  }
+
+  // ===== Confetti =====
+  function fireConfetti() {
+    const canvas = document.getElementById('confetti-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const particleCount = window.innerWidth < 768 ? 40 : 80;
+    const particles = [];
+    const colors = ['#4f46e5', '#6610f2', '#f59e0b', '#10b981', '#ef4444', '#06b6d4'];
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: canvas.width / 2 + (Math.random() - 0.5) * 200,
+        y: canvas.height / 2,
+        vx: (Math.random() - 0.5) * 12,
+        vy: Math.random() * -14 - 4,
+        size: Math.random() * 8 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 10,
+        life: 1
+      });
+    }
+    let frame = 0;
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      particles.forEach(p => {
+        p.x += p.vx; p.vy += 0.35; p.y += p.vy;
+        p.rotation += p.rotSpeed; p.life -= 0.012;
+        if (p.life <= 0) return;
+        alive = true;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        ctx.restore();
+      });
+      frame++;
+      if (alive && frame < 180) requestAnimationFrame(animate);
+      else ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    requestAnimationFrame(animate);
+  }
 
   // ===== Free User: disabled panel click handler =====
   if (!IS_PREMIUM && !CAN_VOTE_FREE) {
@@ -387,17 +659,37 @@
   function openVoteGate() {
     if (voteGateOpen) return;
     voteGateOpen = true;
+    if (gateTimerInterval) clearInterval(gateTimerInterval);
     if (votingPanel) {
       votingPanel.classList.remove('gated');
     }
     if (gateMessage) {
       gateMessage.style.display = 'none';
     }
+    updateStepProgress(2);
   }
 
   if (!HAS_VOTED && (IS_PREMIUM || CAN_VOTE_FREE)) {
-    // Timer: 30 seconds
-    setTimeout(openVoteGate, 30000);
+    // Visual countdown timer: 30 seconds
+    const GATE_SECONDS = 30;
+    let gateSecondsRemaining = GATE_SECONDS;
+    const timerFill = document.getElementById('gate-timer-fill');
+    const timerText = document.getElementById('gate-timer-text');
+
+    if (timerFill && timerText) {
+      gateTimerInterval = setInterval(() => {
+        gateSecondsRemaining--;
+        const pct = ((GATE_SECONDS - gateSecondsRemaining) / GATE_SECONDS) * 100;
+        timerFill.setAttribute('stroke-dasharray', pct + ', 100');
+        timerText.textContent = Math.max(0, gateSecondsRemaining);
+        if (gateSecondsRemaining <= 0) {
+          clearInterval(gateTimerInterval);
+          openVoteGate();
+        }
+      }, 1000);
+    } else {
+      setTimeout(openVoteGate, 30000);
+    }
 
     // Scroll tracking
     const scrollLeft = document.getElementById('scroll-left');
@@ -437,6 +729,27 @@
     updateSubmitButton();
   }
 
+  // ===== Initialize step progress based on state =====
+  if (HAS_VOTED) {
+    updateStepProgress(3);
+  } else if (voteGateOpen) {
+    updateStepProgress(2);
+  }
+
+  // ===== Floating Vote Nudge =====
+  const voteNudge = document.getElementById('vote-nudge');
+  if (voteNudge && !HAS_VOTED) {
+    setTimeout(() => { voteNudge.classList.remove('hidden'); }, 3000);
+    const votingSection = document.getElementById('voting-section');
+    if (votingSection) {
+      const nudgeObs = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) voteNudge.classList.add('hidden');
+        else if (!HAS_VOTED) voteNudge.classList.remove('hidden');
+      }, { threshold: 0.1 });
+      nudgeObs.observe(votingSection);
+    }
+  }
+
   // ===== Show results if already voted & locked =====
   if (HAS_VOTED && VOTES_LOCKED && INITIAL_RESULTS) {
     showResults(INITIAL_RESULTS, TOOL_A_NAME, TOOL_B_NAME);
@@ -462,11 +775,18 @@
     const count = Object.keys(selections).length;
     const submitBtn = document.getElementById('submit-btn');
     const submitText = document.getElementById('submit-text');
+    const submitIcon = document.getElementById('submit-icon');
     if (submitBtn) {
       submitBtn.disabled = count === 0;
-      submitText.textContent = HAS_VOTED
-        ? `Update Votes (${count} of 5)`
-        : `Submit Votes (${count} of 5)`;
+      if (HAS_VOTED && !VOTES_LOCKED) {
+        submitText.textContent = `Update Votes (${count} of 5)`;
+        submitBtn.classList.add('update-mode');
+        if (submitIcon) submitIcon.className = 'bi bi-arrow-repeat';
+      } else {
+        submitText.textContent = `Submit Votes (${count} of 5)`;
+        submitBtn.classList.remove('update-mode');
+        if (submitIcon) submitIcon.className = 'bi bi-send-fill';
+      }
     }
   }
 
@@ -560,12 +880,31 @@
     showResults(data.results, data.tool_a_name, data.tool_b_name);
     document.getElementById('submit-bar').style.display = 'none';
     document.getElementById('post-vote-actions').style.display = 'block';
-    var nudge = document.getElementById('vote-history-nudge');
-    if (nudge) nudge.style.display = 'block';
+    var historyNudge = document.getElementById('vote-history-nudge');
+    if (historyNudge) historyNudge.style.display = 'block';
     if (data.edit_window_expires_at) {
       startEditCountdown(new Date(data.edit_window_expires_at).getTime());
     }
     showShareButtons();
+
+    // Step progress to Results
+    updateStepProgress(3);
+
+    // Confetti celebration
+    fireConfetti();
+
+    // Hide floating nudge
+    const voteNudge = document.getElementById('vote-nudge');
+    if (voteNudge) voteNudge.classList.add('hidden');
+
+    // Bump vote count badge
+    const badgeEl = document.getElementById('vote-count-display');
+    if (badgeEl) {
+      badgeEl.style.animation = 'none';
+      badgeEl.offsetHeight;
+      badgeEl.style.animation = 'badgeBump .4s ease';
+    }
+
     trackEvent('compare_vote_submitted', {categories_count: Object.keys(selections).length});
   }
 
@@ -689,9 +1028,9 @@
       const remaining = lockAtMs - Date.now();
       if (remaining <= 0) {
         if (countdownEl) countdownEl.textContent = 'Votes locked';
-        document.querySelectorAll('.vote-btn').forEach(b => { b.disabled = true; });
-        const submitBtn = document.getElementById('submit-btn');
-        if (submitBtn) submitBtn.disabled = true;
+        document.querySelectorAll('.vote-btn').forEach(b => { b.disabled = true; b.style.cursor = 'not-allowed'; });
+        const submitBar = document.getElementById('submit-bar');
+        if (submitBar) submitBar.style.display = 'none';
         return;
       }
       const min = Math.floor(remaining / 60000);

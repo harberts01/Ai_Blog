@@ -2021,6 +2021,22 @@ def get_user_votes_for_matchup(user_id, matchup_id):
         connection.close()
 
 
+def get_user_voted_matchup_ids(user_id):
+    """Return set of matchup IDs the user has voted on"""
+    connection = get_connection()
+    if not connection:
+        return set()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT DISTINCT matchup_id FROM votes WHERE user_id = %s",
+                (user_id,)
+            )
+            return {row[0] for row in cursor.fetchall()}
+    finally:
+        connection.close()
+
+
 def get_matchup_vote_counts(matchup_id):
     """Get vote counts per category and tool for a matchup"""
     connection = get_connection()

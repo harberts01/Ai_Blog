@@ -1,7 +1,19 @@
 {# Reusable voting panel — included by comparison.html for both premium and bootstrap-free users #}
 <div class="voting-panel {% if not has_voted %}gated{% endif %}" id="voting-panel">
   <div class="gate-message" id="gate-message">
-    <i class="bi bi-book me-1"></i> Read both posts before voting.
+    <div class="gate-timer-ring" id="gate-timer-ring">
+      <svg viewBox="0 0 36 36" class="gate-timer-svg">
+        <path class="gate-timer-bg"
+          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+          fill="none" stroke-width="3" />
+        <path class="gate-timer-fill" id="gate-timer-fill"
+          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+          fill="none" stroke-width="3" stroke-dasharray="0, 100" />
+      </svg>
+      <span class="gate-timer-text" id="gate-timer-text">30</span>
+    </div>
+    <div class="gate-label">Read both posts to unlock voting</div>
+    <div class="gate-sublabel">or scroll to 60% of either post</div>
   </div>
 
   {% if has_voted and not votes_locked %}
@@ -42,15 +54,14 @@
     </div>
     {% endfor %}
   </div>
-</div>
 
-<!-- Submit Bar -->
-<div class="submit-bar" id="submit-bar" {% if has_voted and votes_locked %}style="display:none;"{% endif %}>
-  <div class="d-flex justify-content-center align-items-center gap-3">
-    <button class="btn btn-primary px-4" id="submit-btn" disabled onclick="submitVotes()">
+  <!-- Submit Button (inline, no separate bar) -->
+  <div class="text-center mt-3" id="submit-bar" {% if has_voted and votes_locked %}style="display:none;"{% endif %}>
+    <button class="submit-btn-main {% if has_voted and not votes_locked %}update-mode{% endif %}" id="submit-btn" disabled onclick="submitVotes()">
+      <i class="bi bi-send-fill" id="submit-icon"></i>
       <span id="submit-text">Submit Votes (0 of 5)</span>
-      <span id="submit-spinner" class="spinner-border spinner-border-sm ms-1" style="display:none;" role="status"></span>
+      <span id="submit-spinner" class="spinner-border spinner-border-sm" style="display:none;" role="status"></span>
     </button>
+    <div id="vote-error" class="alert alert-danger mt-2 mx-auto text-center small" style="display:none; max-width: 500px;" role="alert"></div>
   </div>
-  <div id="vote-error" class="alert alert-danger mt-2 mx-auto text-center small" style="display:none; max-width: 500px;" role="alert"></div>
 </div>

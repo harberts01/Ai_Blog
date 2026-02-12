@@ -2015,12 +2015,15 @@ def compare_page():
     page = request.args.get('page', 1, type=int)
     matchups, total = db.get_active_matchups(page=page, per_page=12)
     total_pages = (total + 11) // 12
+    user = get_current_user()
+    voted_ids = db.get_user_voted_matchup_ids(user['id']) if user else set()
     return render_template(
         "compare.html",
         matchups=matchups,
         page=page,
         total_pages=total_pages,
-        total=total
+        total=total,
+        voted_ids=voted_ids
     )
 
 
