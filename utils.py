@@ -4,21 +4,65 @@ Common helper functions used across the application
 """
 import re
 import html
+import bleach
 
 
-def sanitize_input(text):
+# Allowed HTML tags and attributes for AI-generated blog content
+ALLOWED_TAGS = [
+    'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'ul', 'ol', 'li', 'strong', 'em', 'b', 'i',
+    'a', 'code', 'pre', 'blockquote', 'br', 'hr',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'span', 'div', 'sub', 'sup',
+]
+ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title', 'target', 'rel'],
+    'th': ['colspan', 'rowspan'],
+    'td': ['colspan', 'rowspan'],
+}
+
+
+def sanitize_html(content):
+    """
+    Sanitize HTML content to prevent XSS while preserving safe formatting.
+
+    Strips dangerous tags (script, iframe, object, embed, form) and
+    event handler attributes (onclick, onerror, etc.) while keeping
+    standard blog formatting tags.
+
+    Args:
+        content: Raw HTML content string
+
+    Returns:
+        Sanitized HTML string safe for rendering with |safe filter
+    """
+    if not content:
+        return content
+    return bleach.clean(
+        content,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        strip=True,
+    )
+
+
+def sanitize_input(text, max_length=None):
     """
     Sanitize user input to prevent XSS attacks.
-    
+
     Args:
         text: Raw user input string
-        
+        max_length: Optional maximum length to enforce
+
     Returns:
         Escaped and stripped string, or None if input is None
     """
     if text is None:
         return None
-    return html.escape(str(text).strip())
+    cleaned = html.escape(str(text).strip())
+    if max_length and len(cleaned) > max_length:
+        cleaned = cleaned[:max_length]
+    return cleaned
 
 
 def validate_email(email):

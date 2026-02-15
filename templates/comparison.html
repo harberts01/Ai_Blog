@@ -513,7 +513,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
   // ===== Configuration =====
   const MATCHUP_ID = {{ matchup.matchup_id }};
@@ -524,7 +524,7 @@
   let HAS_VOTED = {{ 'true' if has_voted else 'false' }};
   const VOTES_LOCKED = {{ 'true' if votes_locked else 'false' }};
   const VOTE_LOCK_MINUTES = {{ vote_lock_minutes }};
-  const EARLIEST_VOTE_TIME = {{ ("'" + earliest_vote_time + "'")|safe if earliest_vote_time else 'null' }};
+  const EARLIEST_VOTE_TIME = {{ earliest_vote_time|tojson }};
   const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
   const IS_BOOTSTRAP = {{ 'true' if is_bootstrap else 'false' }};
   const CAN_VOTE_FREE = {{ 'true' if can_vote_free else 'false' }};

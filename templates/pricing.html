@@ -779,7 +779,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     const toggleBtns = document.querySelectorAll('.toggle-btn');
     const toggleSlider = document.getElementById('toggleSlider');

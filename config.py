@@ -201,6 +201,9 @@ class Config:
     # Cron settings (for external scheduler like Dokploy)
     # Generate a secure token: python -c "import secrets; print(secrets.token_urlsafe(32))"
     CRON_SECRET = os.environ.get('CRON_SECRET', 'change-me-in-production')
+    if CRON_SECRET == 'change-me-in-production' and os.environ.get('FLASK_ENV') != 'development':
+        import warnings
+        warnings.warn("CRON_SECRET is using the default value — set a secure token in production!", stacklevel=2)
 
     # Rate limiting whitelist - comma-separated IPs that bypass Flask-Limiter
     # Example: RATE_LIMIT_WHITELIST=123.45.67.89,98.76.54.32

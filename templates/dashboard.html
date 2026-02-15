@@ -360,7 +360,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
   var IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
   var currentCategory = 'overall';

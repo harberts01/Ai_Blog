@@ -22,5 +22,8 @@ anthropic>=0.18.0
 google-generativeai>=0.4.0
 together>=1.0.0
 
+# Security
+bleach>=6.0.0
+
 # Testing
 pytest>=7.0.0

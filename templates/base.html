@@ -418,7 +418,7 @@
         <button type="button" class="btn-close btn-close-sm" aria-label="Close" onclick="dismissCompareAnnouncement()"></button>
       </div>
     </div>
-    <script>
+    <script nonce="{{ csp_nonce }}">
     (function() {
       var KEY = 'compare_announcement_dismissed_at';
       var DISMISS_DAYS = 7;
@@ -533,18 +533,18 @@
             </p>
           </div>
           <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary btn-sm" onclick="declineCookies()">Decline</button>
-            <button class="btn btn-primary btn-sm" onclick="acceptCookies()">Accept</button>
+            <button id="cookieDeclineBtn" class="btn btn-outline-secondary btn-sm">Decline</button>
+            <button id="cookieAcceptBtn" class="btn btn-primary btn-sm">Accept</button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     
     <!-- Auto-dismiss Flash Messages -->
-    <script>
+    <script nonce="{{ csp_nonce }}">
       (function() {
         const alerts = document.querySelectorAll('.alert-dismissible');
         const container = document.getElementById('flash-container');
@@ -570,7 +570,7 @@
     </script>
     
     <!-- Mobile Menu Scripts -->
-    <script>
+    <script nonce="{{ csp_nonce }}">
       (function() {
         const navbarCollapse = document.getElementById('navbarNav');
         const aiToolsSubmenu = document.getElementById('aiToolsSubmenu');
@@ -633,7 +633,7 @@
     </script>
 
     <!-- Dark Mode Toggle Script -->
-    <script>
+    <script nonce="{{ csp_nonce }}">
       (function() {
         const themeToggle = document.getElementById('themeToggle');
         const themeToggleMobile = document.getElementById('themeToggleMobile');
@@ -671,30 +671,35 @@
     </script>
 
     <!-- Cookie Consent Script -->
-    <script>
+    <script nonce="{{ csp_nonce }}">
       (function() {
         const cookieConsent = localStorage.getItem('cookieConsent');
         const banner = document.getElementById('cookieConsent');
-        
+
         if (!cookieConsent && banner) {
           banner.style.display = 'block';
         }
+
+        var acceptBtn = document.getElementById('cookieAcceptBtn');
+        var declineBtn = document.getElementById('cookieDeclineBtn');
+        if (acceptBtn) {
+          acceptBtn.addEventListener('click', function() {
+            localStorage.setItem('cookieConsent', 'accepted');
+            document.getElementById('cookieConsent').style.display = 'none';
+          });
+        }
+        if (declineBtn) {
+          declineBtn.addEventListener('click', function() {
+            localStorage.setItem('cookieConsent', 'declined');
+            document.getElementById('cookieConsent').style.display = 'none';
+          });
+        }
       })();
-
-      function acceptCookies() {
-        localStorage.setItem('cookieConsent', 'accepted');
-        document.getElementById('cookieConsent').style.display = 'none';
-      }
-
-      function declineCookies() {
-        localStorage.setItem('cookieConsent', 'declined');
-        document.getElementById('cookieConsent').style.display = 'none';
-      }
     </script>
 
     {% if current_user %}
     <!-- Notification Scripts -->
-    <script>
+    <script nonce="{{ csp_nonce }}">
       // Load notifications when dropdown is opened
       document.addEventListener('DOMContentLoaded', function() {
         const dropdown = document.getElementById('notificationDropdown');

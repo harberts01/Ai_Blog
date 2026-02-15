@@ -165,7 +165,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
   var currentPage = 1;
   var allVotes = [];

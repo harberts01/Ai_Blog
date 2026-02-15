@@ -28,7 +28,7 @@
 <meta name="twitter:title" content="{{ post.title }}" />
 <meta name="twitter:description" content="{{ post_desc }}" />
 <meta name="twitter:image" content="{{ post_image }}" />
-<script type="application/ld+json">
+<script nonce="{{ csp_nonce }}" type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "Article",
@@ -327,7 +327,7 @@
           </div>
           {% endfor %}
         </div>
-        <script>
+        <script nonce="{{ csp_nonce }}">
         (function() {
           var STORAGE_KEY = 'dismissed_compare_banners';
           function getDismissed() {
@@ -415,7 +415,7 @@
 </article>
 
 <!-- Reading Progress Script -->
-<script>
+<script nonce="{{ csp_nonce }}">
   document.addEventListener('DOMContentLoaded', function() {
     const progressBar = document.getElementById('readingProgress');
     const article = document.querySelector('.post-content');

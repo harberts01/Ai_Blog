@@ -13,6 +13,7 @@ separate modules for better maintainability:
 """
 import os
 import re
+import secrets
 import logging
 import threading
 from datetime import datetime, timedelta
@@ -63,12 +64,12 @@ app.secret_key = Config.SECRET_KEY
 # CSRF Protection
 csrf = CSRFProtect(app)
 
-# Rate Limiting
+# Rate Limiting — use Redis if RATE_LIMIT_STORAGE_URI is set, otherwise in-memory
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     default_limits=["1000 per day", "200 per hour"],
-    storage_uri="memory://"
+    storage_uri=os.environ.get('RATE_LIMIT_STORAGE_URI', 'memory://'),
 )
 
 @limiter.request_filter
@@ -78,6 +79,12 @@ def _is_whitelisted():
     return get_remote_address() in app.config.get('RATE_LIMIT_WHITELIST', [])
 
 
+@app.before_request
+def _generate_csp_nonce():
+    """Generate a per-request nonce for Content-Security-Policy."""
+    request.csp_nonce = secrets.token_urlsafe(16)
+
+
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses"""
@@ -85,18 +92,19 @@ def add_security_headers(response):
     if request.path.startswith('/static/img/'):
         response.headers['Cache-Control'] = 'public, max-age=86400'
         return response
+    nonce = getattr(request, 'csp_nonce', '')
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Content-Security-Policy'] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
-        "img-src 'self' data: https:; "
-        "connect-src 'self' https://cdn.jsdelivr.net; "
-        "frame-ancestors 'self';"
+        f"default-src 'self'; "
+        f"script-src 'self' 'unsafe-inline' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+        f"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        f"font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+        f"img-src 'self' data: https:; "
+        f"connect-src 'self' https://cdn.jsdelivr.net; "
+        f"frame-ancestors 'self';"
     )
     return response
 
@@ -124,7 +132,8 @@ def inject_globals():
         'is_premium': is_premium,
         'free_posts_remaining': free_posts_remaining,
         'FREE_POSTS_PER_MONTH': Config.FREE_POSTS_PER_MONTH,
-        'FREE_POST_DELAY_DAYS': Config.FREE_POST_DELAY_DAYS
+        'FREE_POST_DELAY_DAYS': Config.FREE_POST_DELAY_DAYS,
+        'csp_nonce': getattr(request, 'csp_nonce', ''),
     }
 
 
@@ -368,7 +377,7 @@ def post(post_id):
 @limiter.limit("10 per minute")
 def add_comment(post_id):
     """Add a comment to a post"""
-    content = sanitize_input(request.form.get('content'))
+    content = sanitize_input(request.form.get('content'), max_length=5000)
     parent_id = request.form.get('parent_id', type=int)
     
     if not content or len(content) < 3:
@@ -397,8 +406,8 @@ def register():
         return redirect(url_for('home'))
     
     if request.method == "POST":
-        email = sanitize_input(request.form.get('email'))
-        username = sanitize_input(request.form.get('username'))
+        email = sanitize_input(request.form.get('email'), max_length=254)
+        username = sanitize_input(request.form.get('username'), max_length=50)
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
         
@@ -451,7 +460,7 @@ def login():
         return redirect(url_for('home'))
     
     if request.method == "POST":
-        email = sanitize_input(request.form.get('email'))
+        email = sanitize_input(request.form.get('email'), max_length=254)
         password = request.form.get('password')
         
         user = db.get_user_by_email(email)
@@ -495,7 +504,7 @@ def forgot_password():
         return redirect(url_for('home'))
 
     if request.method == "POST":
-        email = sanitize_input(request.form.get('email'))
+        email = sanitize_input(request.form.get('email'), max_length=254)
         user = db.get_user_by_email(email)
 
         if user:
@@ -630,6 +639,8 @@ def update_email_preferences():
     
     # Redirect back to referring page (account or subscriptions)
     next_page = request.form.get('next') or request.referrer or url_for('subscriptions')
+    if not is_safe_url(next_page):
+        next_page = url_for('subscriptions')
     return redirect(next_page)
 
 
@@ -650,8 +661,8 @@ def update_profile():
     """Update user profile (username/email)"""
     user = get_current_user()
     
-    username = sanitize_input(request.form.get('username', '').strip())
-    email = request.form.get('email', '').strip().lower()
+    username = sanitize_input(request.form.get('username', '').strip(), max_length=50)
+    email = request.form.get('email', '').strip().lower()[:254]
     
     # Validate inputs
     errors = []
@@ -1509,15 +1520,25 @@ def admin_check_subscription(user_id):
 
 # ============== Cron Endpoints (for external scheduler like Dokploy) ==============
 
+def _verify_cron_token():
+    """Verify cron authentication from Authorization header or query param (legacy)."""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+    else:
+        # Legacy: accept query param but prefer header
+        token = request.args.get('token')
+    if not token or token != Config.CRON_SECRET:
+        logger.warning("Unauthorized cron attempt")
+        abort(403)
+
+
 @app.route("/cron/generate-posts")
 @limiter.exempt
 def cron_generate_posts():
     """Cron endpoint for scheduled post generation (called by Dokploy)"""
-    token = request.args.get('token')
-    if not token or token != Config.CRON_SECRET:
-        logger.warning("Unauthorized cron attempt")
-        abort(403)
-    
+    _verify_cron_token()
+
     # Log cron job start
     log_id = db.log_cron_start('generate_posts')
     
@@ -1542,10 +1563,7 @@ def cron_generate_posts():
 @limiter.exempt
 def cron_cleanup():
     """Cron endpoint for scheduled cleanup tasks (called by Dokploy)"""
-    token = request.args.get('token')
-    if not token or token != Config.CRON_SECRET:
-        logger.warning("Unauthorized cron attempt")
-        abort(403)
+    _verify_cron_token()
     
     # Log cron job start
     log_id = db.log_cron_start('cleanup')
@@ -1586,10 +1604,7 @@ def cron_cleanup():
 @limiter.exempt
 def cron_recompute_stats():
     """Cron endpoint for recomputing tool leaderboard stats"""
-    token = request.args.get('token')
-    if not token or token != Config.CRON_SECRET:
-        logger.warning("Unauthorized cron attempt for recompute-stats")
-        abort(403)
+    _verify_cron_token()
 
     try:
         logger.info("Cron: Recomputing tool stats...")
@@ -1620,10 +1635,7 @@ def cron_recompute_stats():
 @limiter.exempt
 def cron_generate_matchups():
     """Cron endpoint for generating missing matchups between AI tool posts (called by Dokploy)"""
-    token = request.args.get('token')
-    if not token or token != Config.CRON_SECRET:
-        logger.warning("Unauthorized cron attempt for generate-matchups")
-        abort(403)
+    _verify_cron_token()
 
     log_id = db.log_cron_start('generate_matchups')
 
@@ -1806,6 +1818,7 @@ def api_dashboard_leaderboard():
 
 
 @app.route("/api/dashboard/leaderboard/teaser")
+@limiter.limit("60 per minute")
 def api_dashboard_leaderboard_teaser():
     """API: Get limited leaderboard teaser (no auth required)"""
     above, _ = db.get_tool_stats_for_leaderboard('overall', min_votes=0)
@@ -2201,6 +2214,7 @@ def _map_votes_left_right(data_votes, matchup, position_a_is_left):
 # ============== Engagement Bootstrap API Routes ==============
 
 @app.route("/api/matchups/featured")
+@limiter.limit("60 per minute")
 def api_featured_matchup():
     """API: Get the featured matchup for homepage widget (public, cached 10min)."""
     cached = db._featured_matchup_cache.get('featured')
@@ -2452,6 +2466,7 @@ def api_matchup_results(matchup_id):
 # ============== API Routes ==============
 
 @app.route("/api/tools")
+@limiter.limit("60 per minute")
 def api_tools():
     """API endpoint to get all AI tools"""
     tools = db.get_all_tools()
@@ -2463,6 +2478,7 @@ def api_tools():
 
 
 @app.route("/api/tools/<slug>")
+@limiter.limit("60 per minute")
 def api_tool_by_slug(slug):
     """API endpoint to get a single tool by slug"""
     tool = db.get_tool_by_slug(slug)
@@ -2475,6 +2491,7 @@ def api_tool_by_slug(slug):
 
 
 @app.route("/api/posts")
+@limiter.limit("60 per minute")
 def api_posts():
     """API endpoint to get paginated posts"""
     page = request.args.get('page', 1, type=int)
@@ -2509,6 +2526,7 @@ def api_posts():
 
 
 @app.route("/api/posts/<int:post_id>")
+@limiter.limit("60 per minute")
 def api_post_by_id(post_id):
     """API endpoint to get a single post by ID"""
     post = db.get_post_by_id(post_id)
@@ -2528,6 +2546,7 @@ def api_post_by_id(post_id):
 
 
 @app.route("/api/posts/<int:tool_id>/by-tool")
+@limiter.limit("60 per minute")
 def api_posts_by_tool(tool_id):
     """API endpoint to get posts by tool ID (legacy endpoint)"""
     page = request.args.get('page', 1, type=int)
@@ -2547,6 +2566,7 @@ def api_posts_by_tool(tool_id):
 
 
 @app.route("/api/categories")
+@limiter.limit("60 per minute")
 def api_categories():
     """API endpoint to get all categories with post counts"""
     categories = db.get_categories_with_counts()
@@ -2557,6 +2577,7 @@ def api_categories():
 
 
 @app.route("/api/stats")
+@limiter.limit("60 per minute")
 def api_stats():
     """API endpoint to get public statistics"""
     stats = {
@@ -2664,15 +2685,15 @@ def notifications_recent():
 # ============== Main ==============
 
 if __name__ == "__main__":
-    print("🚀 AI Blog is starting...")
-    print("📝 Using external scheduler (Dokploy) for cron jobs")
-    print("   - POST generation: /cron/generate-posts?token=SECRET")
-    print("   - Cleanup tasks:   /cron/cleanup?token=SECRET")
-    
+    print("AI Blog is starting...")
+    print("Using external scheduler (Dokploy) for cron jobs")
+    print("   - POST generation: /cron/generate-posts  (Authorization: Bearer <token>)")
+    print("   - Cleanup tasks:   /cron/cleanup          (Authorization: Bearer <token>)")
+
     # Use PORT from environment, default to 5000 locally
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    
-    print(f"🌐 Starting on port {port}")
+
+    print(f"Starting on port {port}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)

@@ -137,7 +137,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // Simple confetti effect
 function createConfetti() {
     const colors = ['#667eea', '#764ba2', '#28a745', '#ffc107', '#17a2b8'];

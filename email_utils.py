@@ -383,7 +383,8 @@ def send_new_post_notification(app, post, tool_name, subscribers):
     if not subscribers:
         return
     
-    subject = f"New post from {tool_name}: {post['title']}"
+    safe_title = post['title'].replace('\r', '').replace('\n', ' ')
+    subject = f"New post from {tool_name}: {safe_title}"
     
     # Create HTML email content
     html_content = f"""
@@ -480,7 +481,8 @@ def send_premium_post_notification(app, post, tool_name, subscribers):
         getattr(Config, 'MAILGUN_USE_API', True)
     )
     
-    subject = f"🌟 New from {tool_name}: {post['title']}"
+    safe_title = post['title'].replace('\r', '').replace('\n', ' ')
+    subject = f"🌟 New from {tool_name}: {safe_title}"
     
     # Premium email template with enhanced styling
     html_content = f"""
@@ -844,7 +846,8 @@ def send_compare_challenge_email(app, matchup_data, recipients):
         logger.info("Email disabled — skipping compare challenge send")
         return False
 
-    subject = f"AI Head-to-Head: {matchup_data.get('topic', 'New Matchup')} — Which AI nailed it?"
+    safe_topic = matchup_data.get('topic', 'New Matchup').replace('\r', '').replace('\n', ' ')
+    subject = f"AI Head-to-Head: {safe_topic} — Which AI nailed it?"
 
     # Read and populate template
     import os

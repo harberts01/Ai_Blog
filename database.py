@@ -412,7 +412,7 @@ def insert_post(title, content, category, tool_id=None):
             connection.commit()
             return post_id
     except Exception as e:
-        print(f"Error inserting post: {e}")
+        logger.error("Error inserting post: %s", e)
         return None
     finally:
         connection.close()
@@ -431,7 +431,7 @@ def post_title_exists(title):
             )
             return cursor.fetchone() is not None
     except Exception as e:
-        print(f"Error checking duplicate title: {e}")
+        logger.error("Error checking duplicate title: %s", e)
         return False
     finally:
         connection.close()
@@ -571,7 +571,7 @@ def update_user_email_preferences(user_id, email_notifications):
             connection.commit()
             return cursor.rowcount > 0
     except Exception as e:
-        print(f"Error updating email preferences: {e}")
+        logger.error("Error updating email preferences: %s", e)
         return False
     finally:
         connection.close()
@@ -612,8 +612,9 @@ def update_user_profile(user_id, username=None, email=None):
             
             if not updates:
                 return {'success': False, 'error': 'No fields to update'}
-            
+
             params.append(user_id)
+            # SECURITY: updates list only contains hardcoded column assignments — never user input
             query = f"UPDATE Users SET {', '.join(updates)} WHERE user_id = %s"
             cursor.execute(query, params)
             connection.commit()
@@ -721,7 +722,7 @@ def create_user(email, password_hash, username):
             connection.commit()
             return row[0] if row else None
     except Exception as e:
-        print(f"Error creating user: {e}")
+        logger.error("Error creating user: %s", e)
         return None
     finally:
         connection.close()
@@ -787,7 +788,7 @@ def add_subscription(user_id, tool_id):
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error following tool: {e}")
+        logger.error("Error following tool: %s", e)
         return False
     finally:
         connection.close()
@@ -807,7 +808,7 @@ def remove_subscription(user_id, tool_id):
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error unfollowing tool: {e}")
+        logger.error("Error unfollowing tool: %s", e)
         return False
     finally:
         connection.close()
@@ -986,7 +987,7 @@ def insert_comment(post_id, content, user_id=None, parent_id=None):
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error inserting comment: {e}")
+        logger.error("Error inserting comment: %s", e)
         return False
     finally:
         connection.close()
@@ -1008,7 +1009,7 @@ def delete_old_spam_comments(days=30):
             print(f"Deleted {deleted_count} spam comments older than {days} days")
             return deleted_count
     except Exception as e:
-        print(f"Error deleting spam comments: {e}")
+        logger.error("Error deleting spam comments: %s", e)
         return 0
     finally:
         connection.close()
@@ -1030,7 +1031,7 @@ def add_bookmark(user_id, post_id):
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error adding bookmark: {e}")
+        logger.error("Error adding bookmark: %s", e)
         return False
     finally:
         connection.close()
@@ -1050,7 +1051,7 @@ def remove_bookmark(user_id, post_id):
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error removing bookmark: {e}")
+        logger.error("Error removing bookmark: %s", e)
         return False
     finally:
         connection.close()
@@ -1193,7 +1194,7 @@ def log_api_usage(tool_id, provider, model, input_tokens=0, output_tokens=0, suc
             connection.commit()
             return usage_id
     except Exception as e:
-        print(f"Error logging API usage: {e}")
+        logger.error("Error logging API usage: %s", e)
         return None
     finally:
         connection.close()
@@ -1288,7 +1289,7 @@ def get_api_usage_stats(days=30):
                 'period_days': days
             }
     except Exception as e:
-        print(f"Error getting API usage stats: {e}")
+        logger.error("Error getting API usage stats: %s", e)
         return default_stats
     finally:
         connection.close()
@@ -1335,7 +1336,7 @@ def get_api_errors(days=30, page=1, per_page=50):
             ]
             return errors, total
     except Exception as e:
-        print(f"Error getting API errors: {e}")
+        logger.error("Error getting API errors: %s", e)
         return [], 0
     finally:
         connection.close()
@@ -1372,7 +1373,7 @@ def get_api_error_summary(days=30):
                 for row in cursor.fetchall()
             ]
     except Exception as e:
-        print(f"Error getting API error summary: {e}")
+        logger.error("Error getting API error summary: %s", e)
         return []
     finally:
         connection.close()
@@ -3516,7 +3517,9 @@ def get_user_vote_history(user_id, page=1, limit=20, tool_slug=None,
                 params.extend([tool_slug, tool_slug])
 
             where_clause = " AND ".join(conditions)
-            order = "v.voted_at DESC" if sort == 'newest' else "v.voted_at ASC"
+            # SECURITY: order is safe — only hardcoded values from this whitelist
+            order_whitelist = {'newest': 'v.voted_at DESC', 'oldest': 'v.voted_at ASC'}
+            order = order_whitelist.get(sort, 'v.voted_at DESC')
 
             # Main query
             base_query = """
@@ -4368,7 +4371,7 @@ def get_user_subscription(user_id):
             """, (user_id,))
             return cursor.fetchone()
     except Exception as e:
-        print(f"Error getting user subscription: {e}")
+        logger.error("Error getting user subscription: %s", e)
         return None
     finally:
         connection.close()
@@ -4460,9 +4463,10 @@ def update_user_subscription(user_id, plan_id=None, status=None,
                 
             updates.append("updated_at = NOW()")
             params.append(user_id)
-            
+
+            # SECURITY: updates list only contains hardcoded column assignments — never user input
             cursor.execute(f"""
-                UPDATE UserSubscription 
+                UPDATE UserSubscription
                 SET {', '.join(updates)}
                 WHERE user_id = %s
             """, params)
@@ -4516,7 +4520,7 @@ def update_user_subscription_cancel_at_period_end(user_id, cancel_at_period_end)
             connection.commit()
             return True
     except Exception as e:
-        print(f"Error updating cancel_at_period_end: {e}")
+        logger.error("Error updating cancel_at_period_end: %s", e)
         return False
     finally:
         connection.close()

@@ -301,7 +301,7 @@ content %}
   </div>
 </section>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
   var h = new Date().getHours();
   var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
