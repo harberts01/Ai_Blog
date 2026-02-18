@@ -629,46 +629,32 @@ def send_weekly_digest_email(app, posts, subscribers):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
-          line-height:1.6;color:#333;background:#f4f4f4;margin:0;padding:0}}
-    .container{{max-width:600px;margin:0 auto;padding:20px}}
-    .header{{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;
-             padding:30px;text-align:center;border-radius:10px 10px 0 0}}
-    .content{{background:#fff;padding:30px;border-radius:0 0 10px 10px;
-              box-shadow:0 2px 10px rgba(0,0,0,0.1)}}
-    .btn{{display:inline-block;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-          color:white;padding:14px 28px;text-decoration:none;border-radius:6px;
-          font-weight:600;font-size:15px;margin-top:20px}}
-    .footer{{text-align:center;margin-top:25px;color:#888;font-size:12px;padding:20px}}
-    .footer a{{color:#667eea;text-decoration:none}}
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 style="margin:0;font-size:24px">{Config.SITE_NAME}</h1>
-      <p style="margin:8px 0 0;opacity:.9">Your weekly AI content roundup</p>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;line-height:1.6;color:#333;background:#f4f4f4;margin:0;padding:0;">
+  <div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0;">
+      <h1 style="margin:0;font-size:24px;color:white;">{Config.SITE_NAME}</h1>
+      <p style="margin:8px 0 0;opacity:.9;color:white;">Your weekly AI content roundup</p>
     </div>
-    <div class="content">
-      <p>Here's what was published this week across our AI tools:</p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+    <div style="background:#ffffff;padding:30px;border-radius:0 0 10px 10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);">
+      <p style="color:#333;margin-top:0;">Here's what was published this week across our AI tools:</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
         {post_rows}
       </table>
-      <div style="text-align:center">
-        <a href="{Config.SITE_URL}" class="btn">Browse All Posts →</a>
+      <div style="text-align:center;">
+        <a href="{Config.SITE_URL}" style="display:inline-block;background:#667eea;color:white;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;margin-top:20px;">Browse All Posts &rarr;</a>
       </div>
-      <p style="margin-top:24px;color:#555;font-size:14px">
+      <p style="margin-top:24px;color:#555;font-size:14px;">
         Want instant notifications? Follow specific AI tools on your
-        <a href="{Config.SITE_URL}/subscriptions" style="color:#667eea">subscriptions page</a>
+        <a href="{Config.SITE_URL}/subscriptions" style="color:#667eea;">subscriptions page</a>
         to get an email the moment they publish new content.
       </p>
     </div>
-    <div class="footer">
-      <p>You're receiving this weekly digest from {Config.SITE_NAME}.</p>
-      <p>
-        <a href="{Config.SITE_URL}/account">Manage Notifications</a> &bull;
-        <a href="{Config.SITE_URL}/subscriptions">Follow AI Tools</a>
+    <div style="text-align:center;margin-top:25px;color:#888;font-size:12px;padding:20px;">
+      <p style="margin:0 0 8px;">You're receiving this weekly digest from {Config.SITE_NAME}.</p>
+      <p style="margin:0;">
+        <a href="{Config.SITE_URL}/account" style="color:#667eea;text-decoration:none;">Manage Notifications</a> &bull;
+        <a href="{Config.SITE_URL}/subscriptions" style="color:#667eea;text-decoration:none;">Follow AI Tools</a>
       </p>
     </div>
   </div>
