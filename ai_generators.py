@@ -694,6 +694,19 @@ def _send_post_notifications(app, post_data, tool):
         except Exception as e:
             print(f"⚠️ Failed to send premium email notifications: {e}")
 
+    # Send email notifications to FREE-tier tool followers
+    if Config.MAIL_ENABLED:
+        try:
+            from email_utils import send_new_post_notification
+            free_subscribers = db.get_free_subscriber_emails_by_tool(tool['id'])
+            if free_subscribers:
+                send_new_post_notification(app, post_data, tool['name'], free_subscribers)
+                print(f"📧 Free-tier email notifications queued for {len(free_subscribers)} followers ({tool['name']})")
+            else:
+                print(f"📧 No free subscribers with email notifications enabled for {tool['name']}")
+        except Exception as e:
+            print(f"⚠️ Failed to send free-tier email notifications: {e}")
+
 
 def generate_all_posts(app=None):
     """

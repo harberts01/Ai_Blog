@@ -1654,6 +1654,52 @@ def cron_generate_matchups():
         return jsonify({'success': False, 'error': error_msg}), 500
 
 
+@app.route("/cron/weekly-digest")
+@limiter.exempt
+def cron_weekly_digest():
+    """Send weekly digest email to free users who don't follow any AI tools (called 1x/week by Dokploy)"""
+    _verify_cron_token()
+
+    log_id = db.log_cron_start('weekly_digest')
+
+    try:
+        if not Config.MAIL_ENABLED:
+            logger.info("Cron weekly-digest: Mail disabled, skipping")
+            db.log_cron_complete(log_id, details={'emails_queued': 0, 'reason': 'mail_disabled'})
+            return jsonify({'success': True, 'message': 'Mail disabled, skipping digest'})
+
+        from email_utils import send_weekly_digest_email
+
+        posts = db.get_posts_last_n_days(days=7)
+        subscribers = db.get_non_follower_emails()
+
+        if not posts:
+            logger.info("Cron weekly-digest: No posts in the last 7 days, skipping")
+            db.log_cron_complete(log_id, details={'emails_queued': 0, 'reason': 'no_posts'})
+            return jsonify({'success': True, 'message': 'No posts published this week'})
+
+        if subscribers:
+            send_weekly_digest_email(app, posts, subscribers)
+            logger.info(f"Cron weekly-digest: Queued digest for {len(subscribers)} non-follower users, {min(len(posts), 10)} posts included")
+        else:
+            logger.info("Cron weekly-digest: No non-follower subscribers to notify")
+
+        db.log_cron_complete(log_id, details={
+            'emails_queued': len(subscribers),
+            'posts_included': min(len(posts), 10)
+        })
+        return jsonify({
+            'success': True,
+            'emails_queued': len(subscribers),
+            'posts_included': min(len(posts), 10)
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Cron weekly-digest failed: {error_msg}")
+        db.log_cron_failure(log_id, error_msg)
+        return jsonify({'success': False, 'error': error_msg}), 500
+
+
 # ============== Error Handlers ==============
 
 @app.errorhandler(404)

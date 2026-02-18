@@ -4208,6 +4208,122 @@ def get_premium_subscriber_emails_by_tool(tool_id):
         connection.close()
 
 
+def get_free_subscriber_emails_by_tool(tool_id):
+    """
+    Get email addresses of free-tier users following a tool (for email notifications).
+
+    Returns users who follow the tool but do NOT have an active non-free subscription.
+    Includes users with no subscription row at all and users whose subscription is
+    expired, cancelled, or on the 'free' plan.
+
+    Only returns emails of users who:
+    - Are following the specified AI tool
+    - Have email_notifications enabled
+    - Have an active account
+
+    Args:
+        tool_id: The AI tool's ID
+
+    Returns:
+        List of email strings
+    """
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT u.email
+                FROM Users u
+                JOIN ToolFollow s ON u.user_id = s.user_id
+                WHERE s.tool_id = %s
+                AND u.is_active = TRUE
+                AND u.email_notifications = TRUE
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM UserSubscription us
+                    JOIN SubscriptionPlan sp ON us.plan_id = sp.plan_id
+                    WHERE us.user_id = u.user_id
+                    AND us.status IN ('active', 'trialing')
+                    AND sp.name != 'free'
+                    AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+                )
+            """, (tool_id,))
+            return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting free subscriber emails for tool {tool_id}: {e}")
+        return []
+    finally:
+        connection.close()
+
+
+def get_non_follower_emails():
+    """
+    Get email addresses of active free users who don't follow any AI tools.
+
+    These users will receive a weekly digest email rather than per-tool notifications.
+
+    Returns:
+        List of dicts with 'email' and 'username' keys
+    """
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT u.email, u.username
+                FROM Users u
+                LEFT JOIN ToolFollow s ON u.user_id = s.user_id
+                WHERE s.follow_id IS NULL
+                AND u.is_active = TRUE
+                AND u.email_notifications = TRUE
+            """)
+            return [{'email': row[0], 'username': row[1]} for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting non-follower emails: {e}")
+        return []
+    finally:
+        connection.close()
+
+
+def get_posts_last_n_days(days=7):
+    """
+    Get posts published in the last N days across all tools.
+
+    Args:
+        days: Number of days to look back (default: 7)
+
+    Returns:
+        List of post dicts with id, title, category, created_at, tool_name, tool_slug
+    """
+    connection = get_connection()
+    if not connection:
+        return []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT p.postid, p.Title, p.Category, p.CreatedAt,
+                       t.name as tool_name, t.slug as tool_slug
+                FROM Post p
+                LEFT JOIN AITool t ON p.tool_id = t.tool_id
+                WHERE p.CreatedAt >= NOW() - INTERVAL '%s days'
+                ORDER BY p.CreatedAt DESC
+            """, (days,))
+            return [
+                {
+                    'id': row[0], 'title': row[1], 'category': row[2],
+                    'created_at': row[3], 'tool_name': row[4], 'tool_slug': row[5]
+                }
+                for row in cursor.fetchall()
+            ]
+    except Exception as e:
+        logger.error(f"Error getting posts from last {days} days: {e}")
+        return []
+    finally:
+        connection.close()
+
+
 def get_premium_subscriber_user_ids_by_tool(tool_id):
     """
     Get user IDs of premium users subscribed to a tool (for in-app notifications)

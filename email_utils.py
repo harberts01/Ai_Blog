@@ -382,10 +382,16 @@ def send_new_post_notification(app, post, tool_name, subscribers):
     """
     if not subscribers:
         return
-    
+
+    use_mailgun_api = (
+        Config.MAILGUN_API_KEY
+        and Config.MAILGUN_DOMAIN
+        and getattr(Config, 'MAILGUN_USE_API', True)
+    )
+
     safe_title = post['title'].replace('\r', '').replace('\n', ' ')
     subject = f"New post from {tool_name}: {safe_title}"
-    
+
     # Create HTML email content
     html_content = f"""
     <!DOCTYPE html>
@@ -440,20 +446,20 @@ def send_new_post_notification(app, post, tool_name, subscribers):
     Manage your subscriptions: {Config.SITE_URL}/subscriptions
     """
     
-    # Create message
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = subject
-    msg['From'] = Config.MAIL_DEFAULT_SENDER
-    
-    msg.attach(MIMEText(text_content, 'plain'))
-    msg.attach(MIMEText(html_content, 'html'))
-    
-    # Send asynchronously to not block the main thread
-    thread = Thread(target=send_email_async, args=(app, msg, subscribers))
-    thread.start()
-    
-    logger.info("Queued email notification for %d subscribers about post: %s", 
-                len(subscribers), post['title'])
+    if use_mailgun_api:
+        send_email_via_mailgun_api_async(app, subscribers, subject, html_content, text_content)
+        logger.info("Queued Mailgun API email for %d subscribers: %s",
+                    len(subscribers), post['title'])
+    else:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = Config.MAIL_DEFAULT_SENDER
+        msg.attach(MIMEText(text_content, 'plain'))
+        msg.attach(MIMEText(html_content, 'html'))
+        thread = Thread(target=send_email_async, args=(app, msg, subscribers))
+        thread.start()
+        logger.info("Queued SMTP email for %d subscribers: %s",
+                    len(subscribers), post['title'])
 
 
 def send_premium_post_notification(app, post, tool_name, subscribers):
@@ -575,6 +581,122 @@ def send_premium_post_notification(app, post, tool_name, subscribers):
         
         logger.info("Queued SMTP email for %d premium subscribers: %s", 
                     len(subscribers), post['title'])
+
+
+def send_weekly_digest_email(app, posts, subscribers):
+    """
+    Send weekly digest email to free users who don't follow any AI tools.
+
+    Includes up to 10 recent posts from all tools with links and a CTA to browse
+    the site. Also encourages users to follow specific tools for instant notifications.
+
+    Uses Mailgun HTTP API (preferred) with SMTP fallback.
+
+    Args:
+        app: Flask app instance (for app context in async threads)
+        posts: List of post dicts (id, title, category, created_at, tool_name, tool_slug)
+        subscribers: List of dicts with 'email' and 'username' keys
+    """
+    if not subscribers or not posts:
+        return
+
+    use_mailgun_api = (
+        Config.MAILGUN_API_KEY
+        and Config.MAILGUN_DOMAIN
+        and getattr(Config, 'MAILGUN_USE_API', True)
+    )
+
+    subject = f"New AI posts this week on {Config.SITE_NAME}"
+
+    # Build post rows HTML (cap at 10)
+    post_rows = ""
+    for post in posts[:10]:
+        tool_label = post.get('tool_name') or 'AI'
+        post_rows += f"""
+        <tr>
+            <td style="padding:12px 0;border-bottom:1px solid #eee;">
+                <span style="background:#667eea;color:white;padding:2px 8px;border-radius:10px;
+                      font-size:11px;margin-right:8px;display:inline-block;">{tool_label}</span>
+                <a href="{Config.SITE_URL}/post/{post['id']}"
+                   style="color:#333;text-decoration:none;font-weight:600;">
+                    {post['title']}
+                </a>
+            </td>
+        </tr>"""
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+          line-height:1.6;color:#333;background:#f4f4f4;margin:0;padding:0}}
+    .container{{max-width:600px;margin:0 auto;padding:20px}}
+    .header{{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;
+             padding:30px;text-align:center;border-radius:10px 10px 0 0}}
+    .content{{background:#fff;padding:30px;border-radius:0 0 10px 10px;
+              box-shadow:0 2px 10px rgba(0,0,0,0.1)}}
+    .btn{{display:inline-block;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+          color:white;padding:14px 28px;text-decoration:none;border-radius:6px;
+          font-weight:600;font-size:15px;margin-top:20px}}
+    .footer{{text-align:center;margin-top:25px;color:#888;font-size:12px;padding:20px}}
+    .footer a{{color:#667eea;text-decoration:none}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin:0;font-size:24px">{Config.SITE_NAME}</h1>
+      <p style="margin:8px 0 0;opacity:.9">Your weekly AI content roundup</p>
+    </div>
+    <div class="content">
+      <p>Here's what was published this week across our AI tools:</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        {post_rows}
+      </table>
+      <div style="text-align:center">
+        <a href="{Config.SITE_URL}" class="btn">Browse All Posts →</a>
+      </div>
+      <p style="margin-top:24px;color:#555;font-size:14px">
+        Want instant notifications? Follow specific AI tools on your
+        <a href="{Config.SITE_URL}/subscriptions" style="color:#667eea">subscriptions page</a>
+        to get an email the moment they publish new content.
+      </p>
+    </div>
+    <div class="footer">
+      <p>You're receiving this weekly digest from {Config.SITE_NAME}.</p>
+      <p>
+        <a href="{Config.SITE_URL}/account">Manage Notifications</a> &bull;
+        <a href="{Config.SITE_URL}/subscriptions">Follow AI Tools</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+    text_content = f"New AI posts this week on {Config.SITE_NAME}:\n\n"
+    for post in posts[:10]:
+        tool_label = post.get('tool_name') or 'AI'
+        text_content += f"[{tool_label}] {post['title']}\n{Config.SITE_URL}/post/{post['id']}\n\n"
+    text_content += f"\nBrowse all posts: {Config.SITE_URL}\n"
+    text_content += f"Follow AI tools for instant notifications: {Config.SITE_URL}/subscriptions\n"
+    text_content += f"Manage notifications: {Config.SITE_URL}/account\n"
+
+    to_emails = [s['email'] for s in subscribers]
+
+    if use_mailgun_api:
+        send_email_via_mailgun_api_async(app, to_emails, subject, html_content, text_content)
+        logger.info("Queued weekly digest via Mailgun for %d recipients", len(to_emails))
+    else:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = Config.MAIL_DEFAULT_SENDER
+        msg.attach(MIMEText(text_content, 'plain'))
+        msg.attach(MIMEText(html_content, 'html'))
+        thread = Thread(target=send_email_async, args=(app, msg, to_emails))
+        thread.start()
+        logger.info("Queued weekly digest via SMTP for %d recipients", len(to_emails))
 
 
 def send_welcome_email(app, email, username):
